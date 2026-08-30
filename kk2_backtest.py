@@ -120,7 +120,9 @@ def event_study(res: pd.DataFrame, horizons=HORIZONS) -> list:
 # ==========================================================================
 
 def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
-                  cost: float, max_hold) -> dict:
+                  cost: float, max_hold, trail: float | None = None) -> dict:
+    """单策略模拟。trail: 跟踪止损比例 (如 0.15 = 从入场后最高收盘回撤 15% 离场),
+    与信号离场可叠加 (先到先出)。"""
     o = res["OPEN"].to_numpy(dtype=float)
     c = res["CLOSE"].to_numpy(dtype=float)
     entry = res[list(entry_cols)].fillna(False).astype(bool).any(axis=1).to_numpy()
@@ -131,6 +133,7 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
     equity = np.full(n, np.nan)
     pend_buy = pend_sell = False
     entry_i, basis = -1, 1.0
+    hi_since_entry = np.nan
     trades = []
 
     for t in range(n):
@@ -145,10 +148,13 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
             shares = cash * (1 - cost) / o[t]
             cash = 0.0
             entry_i = t
+            hi_since_entry = c[t]
         pend_buy = pend_sell = False
         # 2) 当日收盘评估信号 -> 挂次日开盘单
         if shares > 0:
-            if exitc[t] or (max_hold is not None and t - entry_i >= max_hold):
+            hi_since_entry = max(hi_since_entry, c[t])
+            trail_hit = trail is not None and c[t] <= hi_since_entry * (1 - trail)
+            if exitc[t] or trail_hit or (max_hold is not None and t - entry_i >= max_hold):
                 pend_sell = True
         elif entry[t]:
             pend_buy = True
@@ -187,13 +193,22 @@ def _buy_hold(res: pd.DataFrame, cost: float) -> dict:
     return {"equity": equity, "trades": []}
 
 
+def slice_years(res: pd.DataFrame, years: float):
+    """按年截取指标结果 (指标已在全量历史计算, 切片只影响回测区间, 预热不丢失)。"""
+    if not years:
+        return res
+    start = res.index[-1] - pd.DateOffset(years=float(years))
+    return res.loc[res.index >= start]
+
+
 def run_backtest(res: pd.DataFrame, cost: float = 0.001, max_hold=None,
                  presets=None) -> dict:
     """完整回测报告 (纯 Python 数据, 便于 CLI 打印或 JSON 序列化)。"""
     presets = presets or PRESETS
     strategies = []
     for p in presets:
-        bt = _one_strategy(res, p["entry"], p["exit"], cost, max_hold)
+        bt = _one_strategy(res, p["entry"], p["exit"], cost, max_hold,
+                           trail=p.get("trail"))
         row = {"name": p["name"], **_perf(bt["equity"], bt["trades"]),
                "exposure": round(_exposure(bt, res), 3)}
         strategies.append(row)
@@ -269,12 +284,17 @@ def print_report(symbol: str, params: dict, cost: float, report: dict, n: int):
               f"{s['exposure'] * 100:>5.0f}%")
 
 
+DEFAULT_SYMBOLS = ("TQQQ", "MSFT", "NFLX", "YINN", "SNOW", "TSLA",
+                   "MRNA", "NVDA", "TEM", "GOOGL", "SIVE", "AAOI")
+
+
 def main():
     import argparse
     from kk2_ehopt10_ui import DEFAULT_COUNT, clamp_params, df_from_rows, fetch_quote
 
     ap = argparse.ArgumentParser(description="KK2 EHOPT10 回测")
-    ap.add_argument("--symbols", default="TQQQ,QQQ", help="逗号分隔, 默认 TQQQ,QQQ")
+    ap.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS),
+                    help="逗号分隔, 默认关注列表 12 只标的")
     ap.add_argument("--interval", default="1d")
     ap.add_argument("--cost", type=float, default=0.001, help="单边成本, 默认 0.001")
     ap.add_argument("--max-hold", type=int, default=None)

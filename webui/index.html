@@ -21,6 +21,10 @@
     overflow-y: auto; padding: 14px 14px 24px; }
   #side h1 { font-size: 17px; margin: 0; letter-spacing: .5px; }
   #side h1 .ver { color: var(--accent); font-size: 12px; margin-left: 6px; }
+  .ver-sel { background: transparent; color: var(--accent); border: 1px solid transparent;
+    border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer; margin-left: 6px; }
+  .ver-sel:hover, .ver-sel:focus { border-color: var(--accent); outline: none; }
+  .ver-sel option { background: var(--panel2); color: var(--text); }
   .muted { color: var(--muted); font-size: 12px; }
   section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
   section > .sec-title { font-size: 12px; color: var(--muted); letter-spacing: 1px;
@@ -122,6 +126,7 @@
   .b-starb { background: #b58900; color: #fff8d6; }
   .b-stars { background: #ad1457; }
   .b-juefan{ background: #e0821e; }
+  .b-scond { background: transparent; color: #30d158; border: 1px solid #30d158; }
   .b-n9    { background: #2e7d32; }
   .b-n9d   { background: #8e24aa; }
 
@@ -138,8 +143,11 @@
 <body>
 <div id="app">
   <aside id="side">
-    <h1>KK2 EHOPT10<span class="ver">v3</span></h1>
-    <div class="muted">富途主图指标 · 优化版 (绝反=参考指标原始信号 · ★买/★卖已弃用)</div>
+    <h1>KK2 EHOPT10<select id="verSel" class="ver-sel" title="切换指标版本对比 (v4=优化版)">
+      <option value="v4" selected>v4 优化版</option>
+      <option value="v3">v3</option>
+    </select></h1>
+    <div class="muted">富途主图指标 · <span id="verNote"></span></div>
 
     <section>
       <div class="sec-title">数据</div>
@@ -229,12 +237,22 @@
     </div>
     <div class="muted">信号 T 日收盘确认 → T+1 开盘价成交（无未来函数）· 只做多 · 双边计入成本 · 对比买入持有</div>
     <div style="margin:10px 0 4px">
+      回测周期 <select id="btYears" class="num" style="width:84px">
+        <option value="">全部</option>
+        <option value="1">近1年</option>
+        <option value="2">近2年</option>
+        <option value="3">近3年</option>
+        <option value="5">近5年</option>
+        <option value="10">近10年</option>
+      </select>
       单边成本 % <input id="btCost" class="num" type="number" value="0.1" step="0.05" min="0" style="width:64px">
       最长持有K线 <input id="btHold" class="num" type="number" placeholder="不限" min="1" style="width:76px">
       <button class="btn" id="btRun">重新计算</button>
+      <button class="btn" id="btCompare">⇄ v3/v4 对比回测</button>
     </div>
     <div class="sec-h">策略对比</div>
     <div id="btStrat"><div class="muted">尚未回测</div></div>
+    <div id="btCompareDiv"></div>
     <div class="sec-h">资金曲线 <span class="muted">(对数刻度 · 灰虚线 = 买入持有基准)</span></div>
     <div id="btEquity"></div>
     <div class="sec-h">信号预测力 · 事件研究 <span class="muted">(T+1 开盘入场毛收益; 单元格 = 胜率 / 均值 / t值; 右列 = 全样本基线)</span></div>
@@ -250,9 +268,14 @@
 "use strict";
 /* ============================== 状态 ============================== */
 const INTERVAL_LABEL = { "1d": "日K", "1wk": "周K", "60m": "60分", "15m": "15分", "5m": "5分" };
+const VER_NOTES = {
+  v3: "绝反=参考指标原始信号 (3%反包, 无去重)",
+  v4: "优化版: 绝反 5%反包 + 10日去重 · ★买/★卖已弃用",
+};
 const state = {
   source: "quote",           // 'quote' | 'sample' | 'csv'
   seed: 7,
+  version: "v4",             // 指标版本 v3 | v4
   rows: null,                // 行情/CSV 解析后的K线缓存 [[date,o,h,l,c,v],...]
   symbol: "TQQQ",
   quoteSrcName: "",
@@ -321,7 +344,7 @@ async function recompute() {
     return;
   }
   $("#loading").style.display = "block";
-  const body = { params: readParams() };
+  const body = { params: readParams(), version: state.version };
   if (state.source === "sample") { body.source = "sample"; body.seed = state.seed; }
   else { body.source = "rows"; body.rows = state.rows; }
   try {
@@ -353,14 +376,15 @@ async function loadQuote() {
     const r = await fetch("/api/fetch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbol, interval, count: 1000 }),
+      body: JSON.stringify({ symbol, interval, count: 2500 }),
     });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     state.source = "quote";
     state.rows = d.rows;
     state.symbol = d.symbol || symbol;
-    state.quoteSrcName = d.source === "futu" ? "Futu OpenD" : "Yahoo Finance";
+    state.quoteSrcName = { futu: "Futu OpenD", yahoo: "Yahoo Finance",
+                            cache: "本地缓存" }[d.source] || d.source;
     state.quoteNote = d.note || "";
     renderWatchBtn();
     await recompute();
@@ -410,6 +434,7 @@ function renderSummary(d) {
 /* ★买/★卖 已弃用, 不在列表/tooltip 展示 (事件研究中仍持续观测) */
 const SIG_TYPES = [
   ["bSignal", "B买", "b-buy"], ["sSignal", "S卖", "b-sell"],
+  ["sCondition", "S条件", "b-scond"],
   ["juefan", "绝反", "b-juefan"], ["upNine", "上九转9", "b-n9"],
   ["downNine", "下九转9", "b-n9d"],
 ];
@@ -580,6 +605,11 @@ function renderChart(d) {
         label: { show: true, formatter: "S", position: "inside",
                  color: "#fff", fontSize: 10, fontWeight: "bold" },
         data: pts(d.sSignal, (i) => d.high[i]) },
+      { name: "S条件", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
+        symbol: "circle", symbolSize: 8, symbolOffset: [0, -48], z: 12,
+        itemStyle: { color: "rgba(48,209,88,.12)", borderColor: "#30d158", borderWidth: 2 },
+        emphasis: { scale: false },
+        data: pts(d.sCondition, (i) => d.high[i]) },
       { name: "B买", type: "effectScatter", xAxisIndex: 0, yAxisIndex: 0,
         symbol: "circle", symbolSize: 15, z: 14,
         symbolOffset: [0, 22],
@@ -662,7 +692,9 @@ $("#symbol").addEventListener("keydown", (e) => {
 $("#interval").addEventListener("change", loadQuote);
 
 /* ---------- 股票关注列表 (localStorage 持久化) ---------- */
-const WATCH_KEY = "kk2_watchlist_v1";
+const WATCH_KEY = "kk2_watchlist_v2";
+const DEFAULT_WATCH = ["TQQQ", "MSFT", "NFLX", "YINN", "SNOW", "TSLA",
+                       "MRNA", "NVDA", "TEM", "GOOGL", "SIVE", "AAOI"];
 
 function getWatch() {
   try {
@@ -758,12 +790,14 @@ const btOverlay = $("#btOverlay");
 
 $("#btnBacktest").addEventListener("click", () => {
   btOverlay.style.display = "block";
-  $("#btTitle").textContent = state.symbol || "";
+  $("#btTitle").textContent = (state.symbol || "") + " · " + state.version +
+    ($("#btYears").value ? " · 近" + $("#btYears").value + "年" : " · 全部");
   runBacktest();
 });
 $("#btClose").addEventListener("click", () => (btOverlay.style.display = "none"));
 btOverlay.addEventListener("click", (e) => { if (e.target === btOverlay) btOverlay.style.display = "none"; });
 $("#btRun").addEventListener("click", runBacktest);
+$("#btYears").addEventListener("change", runBacktest);
 
 async function runBacktest() {
   if (!state.data && !state.rows && state.source !== "sample") {
@@ -771,8 +805,12 @@ async function runBacktest() {
     return;
   }
   $("#btStrat").innerHTML = '<div class="muted">回测计算中…</div>';
+  $("#btTitle").textContent = (state.symbol || "") + " · " + state.version +
+    ($("#btYears").value ? " · 近" + $("#btYears").value + "年" : " · 全部");
   const body = {
     params: readParams(),
+    version: state.version,
+    years: parseFloat($("#btYears").value) || null,
     cost: (parseFloat($("#btCost").value) || 0.1) / 100,
     max_hold: parseInt($("#btHold").value) || null,
   };
@@ -883,8 +921,76 @@ function renderBacktest(d) {
   $("#btSplit").innerHTML = sp;
 }
 
+/* ---------- v3/v4 对比回测 ---------- */
+$("#btCompare").addEventListener("click", runCompare);
+async function runCompare() {
+  if (state.source !== "sample" && !state.rows) { toast("请先加载数据"); return; }
+  $("#btCompareDiv").innerHTML = '<div class="muted">双版本回测中…</div>';
+  const mk = async (v) => {
+    const body = {
+      params: readParams(), version: v,
+      years: parseFloat($("#btYears").value) || null,
+      cost: (parseFloat($("#btCost").value) || 0.1) / 100,
+      max_hold: parseInt($("#btHold").value) || null,
+    };
+    if (state.source === "sample") { body.source = "sample"; body.seed = state.seed; }
+    else { body.source = "rows"; body.rows = state.rows; }
+    const r = await fetch("/api/backtest", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    return d;
+  };
+  try {
+    const [a, b] = await Promise.all([mk("v3"), mk("v4")]);
+    renderCompare(a, b);
+  } catch (e) {
+    $("#btCompareDiv").innerHTML = "";
+    toast("对比回测失败: " + (e.message || e));
+  }
+}
+
+function renderCompare(a, b) {
+  const mapB = Object.fromEntries(b.strategies.map((s) => [s.name, s]));
+  const cnt = (rep, key) => {
+    const r = rep.events.find((e) => e.signal === key);
+    return r ? r.count : "--";
+  };
+  let html = '<table><tr><th>策略</th><th>v3 总收益</th><th>v4 总收益</th><th>Δ收益</th>' +
+    '<th>v3 回撤</th><th>v4 回撤</th><th>v3 夏普</th><th>v4 夏普</th><th>交易 v3→v4</th></tr>';
+  for (const s of a.strategies) {
+    const sb = mapB[s.name] || {};
+    const isBh = s.name.startsWith("基准");
+    const delta = (s.total != null && sb.total != null) ? (sb.total - s.total) : null;
+    const cls = (v) => v == null ? "" : v >= 0 ? "pos" : "neg";
+    html += `<tr${isBh ? ' style="color:#9aa4b0"' : ""}><td>${s.name}</td>` +
+      `<td class="${cls(s.total)}">${fmtPct(s.total, true)}</td>` +
+      `<td class="${cls(sb.total)}">${fmtPct(sb.total, true)}</td>` +
+      `<td class="${cls(delta)}">${delta == null ? "--" : (delta > 0 ? "+" : "") + delta.toFixed(1) + "%"}</td>` +
+      `<td>${fmtPct(s.mdd)}</td><td>${fmtPct(sb.mdd)}</td>` +
+      `<td>${s.sharpe ?? "--"}</td><td>${sb.sharpe ?? "--"}</td>` +
+      `<td>${s.trades ?? "--"} → ${sb.trades ?? "--"}</td></tr>`;
+  }
+  html += "</table>";
+  html += `<div class="muted">绝反触发数: v3=${cnt(a, "ICON_JUEFAN")} · ` +
+    `v4=${cnt(b, "ICON_JUEFAN")} (5%反包+10日去重) · ` +
+    `★买/★卖 两版本均已弃用, 其余信号口径一致</div>`;
+  $("#btCompareDiv").innerHTML = html;
+}
+
+/* ---------- 指标版本切换 ---------- */
+$("#verSel").addEventListener("change", () => {
+  state.version = $("#verSel").value;
+  $("#verNote").textContent = VER_NOTES[state.version] || "";
+  recompute();
+  if (btOverlay.style.display === "block") runBacktest();
+});
+$("#verNote").textContent = VER_NOTES[state.version] || "";
+
 /* ============================== 启动: 默认加载 TQQQ 日K ============================== */
-if (localStorage.getItem(WATCH_KEY) == null) setWatch(["TQQQ"]);  // 默认关注
+if (localStorage.getItem(WATCH_KEY) == null) setWatch(DEFAULT_WATCH);  // 默认关注列表
 renderWatchBtn();
 loadQuote();
 </script>

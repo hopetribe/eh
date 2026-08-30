@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from kk2_backtest import PRESETS, run_backtest
+from kk2_backtest import DEFAULT_SYMBOLS, PRESETS, run_backtest, slice_years
 from kk2_ehopt10 import compute_ehopt10, make_sample_data
 
 ROOT = Path(__file__).resolve().parent
@@ -70,13 +70,67 @@ CSV_ALIASES = {
 
 # interval: (Futu KLType 名, Yahoo interval, Yahoo range)
 INTERVALS = {
-    "1d": ("K_DAY", "1d", "5y"),
+    "1d": ("K_DAY", "1d", "10y"),
     "1wk": ("K_WEEK", "1wk", "max"),
     "60m": ("K_60M", "60m", "2y"),
     "15m": ("K_15M", "15m", "60d"),
     "5m": ("K_5M", "5m", "60d"),
 }
-DEFAULT_COUNT = 1000
+DEFAULT_COUNT = 2500
+
+# ==========================================================================
+# K线本地落盘缓存: data/<SYMBOL>_<interval>.csv
+#   - 在线抓取后合并落盘, 避免重复请求
+#   - 缓存陈旧 (最后一根K线早于今天, 或今天尚未刷新过) 时才重新请求
+#   - 服务启动后由后台线程每日自动刷新, 保证数据及时
+# ==========================================================================
+DATA_DIR = ROOT / "data"
+
+
+def _cache_path(symbol: str, interval: str):
+    return DATA_DIR / f"{symbol.replace('.', '_')}_{interval}.csv"
+
+
+def _load_cache(symbol: str, interval: str) -> pd.DataFrame | None:
+    path = _cache_path(symbol, interval)
+    if not path.exists():
+        return None
+    try:
+        df = pd.read_csv(path)
+        df.index = pd.to_datetime(df["date"], format="mixed")
+        df = df[["open", "high", "low", "close", "volume"]].astype(float)
+        return df
+    except Exception:  # noqa: BLE001 - 缓存损坏时忽略, 重新抓取
+        return None
+
+
+def _save_cache(symbol: str, interval: str, df: pd.DataFrame):
+    DATA_DIR.mkdir(exist_ok=True)
+    out = df.copy()
+    idx = out.index
+    out.insert(0, "date", [t.strftime("%Y-%m-%d %H:%M") if hasattr(t, "hour") and (t.hour or t.minute)
+                           else t.strftime("%Y-%m-%d") for t in idx])
+    out.to_csv(_cache_path(symbol, interval), index=False)
+
+
+def _cache_is_fresh(cached: pd.DataFrame, interval: str, path) -> bool:
+    """缓存是否足够新 (无需在线更新)。
+
+    规则: 今天已尝试刷新过 (文件 mtime) / 已有今天的K线 / 自最后一根K线
+    以来没有错失任何交易日 (周末与假日不视为陈旧) —— 三者满足其一即新鲜。
+    日内周期永远视为需刷新。
+    """
+    if interval.endswith("m"):
+        return False
+    now = pd.Timestamp.now().normalize()
+    last = cached.index.max().normalize()
+    if last >= now:
+        return True
+    if path.exists() and pd.Timestamp(
+            path.stat().st_mtime, unit="s", tz="utc").tz_localize(None).normalize() >= now:
+        return True
+    missed = pd.bdate_range(last + pd.Timedelta(days=1), now - pd.Timedelta(days=1))
+    return len(missed) == 0
 
 _opend_cache = {"ts": 0.0, "ok": False}
 
@@ -202,8 +256,13 @@ def _fetch_yahoo(symbol: str, interval: str, count: int) -> list:
     return rows
 
 
-def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT) -> dict:
-    """抓取K线: Futu 优先 (OpenD 在运行时), 失败自动回退 Yahoo。"""
+def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT,
+                use_cache: bool = True, force: bool = False) -> dict:
+    """抓取K线: 本地缓存优先 (陈旧才在线更新), Futu 优先, 失败自动回退 Yahoo。
+
+    force=True 时无条件在线刷新 (供后台每日守护使用)。
+    返回 {rows, source, symbol, interval, note}; source 可为 cache/futu/yahoo。
+    """
     interval = interval if interval in INTERVALS else "1d"
     count = int(min(max(int(count or DEFAULT_COUNT), 100), 5000))
     symbol = (symbol or "TQQQ").strip().upper()
@@ -211,27 +270,58 @@ def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT) -
         raise ValueError("股票代码不能为空")
 
     notes = []
-    try:
-        import futu  # noqa: F401 - 检测 futu-api 是否安装
-        futu_ready = _opend_reachable()
-    except ImportError:
-        futu_ready = False
-
-    if futu_ready:
+    cpath = _cache_path(symbol, interval)
+    cached = _load_cache(symbol, interval) if use_cache else None
+    need_fetch = force or cached is None or not _cache_is_fresh(cached, interval, cpath)
+    if not use_cache or cached is None or need_fetch or cached.empty:
+        merged = cached
         try:
-            df = _fetch_futu(symbol, interval, count)
-            return {"rows": _rows_from_df(df), "source": "futu",
-                    "symbol": to_futu_symbol(symbol), "interval": interval, "note": ""}
-        except Exception as exc:  # noqa: BLE001
-            notes.append(f"Futu({exc})")
+            import futu  # noqa: F401 - 检测 futu-api 是否安装
+            futu_ready = _opend_reachable()
+        except ImportError:
+            futu_ready = False
 
-    try:
-        rows = _fetch_yahoo(symbol, interval, count)
-        return {"rows": rows, "source": "yahoo",
-                "symbol": to_yahoo_symbol(symbol), "interval": interval,
-                "note": "; ".join(notes)}
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"获取 {symbol} 行情失败: {'; '.join(notes + [f'Yahoo({exc})'])}") from exc
+        if futu_ready:
+            try:
+                df = _fetch_futu(symbol, interval, count)
+                merged = df if merged is None or merged.empty else (
+                    pd.concat([merged, df])[~pd.concat([merged, df]).index.duplicated(keep="last")]
+                    .sort_index())
+                source, sym_used = "futu", to_futu_symbol(symbol)
+            except Exception as exc:  # noqa: BLE001
+                notes.append(f"Futu({exc})")
+                source, sym_used = None, to_yahoo_symbol(symbol)
+        else:
+            source, sym_used = None, to_yahoo_symbol(symbol)
+
+        if source is None:
+            try:
+                rows = _fetch_yahoo(symbol, interval, count)
+                df = pd.DataFrame([r[1:] for r in rows],
+                                  columns=["open", "high", "low", "close", "volume"],
+                                  index=pd.to_datetime([r[0] for r in rows], format="mixed"))
+                merged = df if merged is None or merged.empty else (
+                    pd.concat([merged, df])[~pd.concat([merged, df]).index.duplicated(keep="last")]
+                    .sort_index())
+                source = "yahoo"
+            except Exception as exc:  # noqa: BLE001
+                if merged is not None and not merged.empty:
+                    notes.append(f"在线更新失败({exc}), 使用本地缓存")
+                    out_rows = _rows_from_df(merged)
+                    return {"rows": out_rows[-count:], "source": "cache",
+                            "symbol": sym_used, "interval": interval,
+                            "note": "; ".join(notes)}
+                raise RuntimeError(f"获取 {symbol} 行情失败: {'; '.join(notes + [f'Yahoo({exc})'])}") from exc
+
+        _save_cache(symbol, interval, merged)
+        out_rows = _rows_from_df(merged)
+        return {"rows": out_rows[-count:], "source": source,
+                "symbol": sym_used, "interval": interval, "note": "; ".join(notes)}
+
+    # 缓存足够新, 直接命中
+    return {"rows": _rows_from_df(cached)[-count:], "source": "cache",
+            "symbol": to_yahoo_symbol(symbol), "interval": interval,
+            "note": "本地缓存"}
 
 
 def df_from_rows(rows) -> pd.DataFrame:
@@ -320,8 +410,12 @@ def jarr(values, nd: int = 6) -> list:
     return out
 
 
-def build_payload(df: pd.DataFrame, params: dict) -> dict:
-    res = compute_ehopt10(df, **params)
+def _norm_version(raw) -> str:
+    return "v3" if str(raw or "").strip().lower() == "v3" else "v4"
+
+
+def build_payload(df: pd.DataFrame, params: dict, version: str = "v4") -> dict:
+    res = compute_ehopt10(df, **params, version=version)
 
     def flag_indices(col):
         return [int(i) for i in np.asarray(res[col], dtype=bool).nonzero()[0]]
@@ -353,6 +447,7 @@ def build_payload(df: pd.DataFrame, params: dict) -> dict:
         "downLabel": down_labels, "downNine": flag_indices("NINE2_DOWN_9"),
         "bSignal": flag_indices("B_SIGNAL"), "sSignal": flag_indices("S_SIGNAL"),
         "juefan": flag_indices("ICON_JUEFAN"),
+        "sCondition": flag_indices("S_CONDITION"),
         "buy": flag_indices("NINE2_BUY_SIGNAL"), "sell": flag_indices("NINE2_SELL_SIGNAL"),
         "summary": {
             "close": last_or_none("CLOSE"), "mid": last_or_none("MID"),
@@ -438,24 +533,46 @@ class UiHandler(BaseHTTPRequestHandler):
                 cost = min(max(float(req.get("cost") or 0.001), 0.0), 0.05)
                 max_hold = req.get("max_hold")
                 max_hold = int(max_hold) if max_hold else None
-                res = compute_ehopt10(df, **params)
+                years = req.get("years")
+                years = float(years) if years else None
+                version = _norm_version(req.get("version"))
+                res = compute_ehopt10(df, **params, version=version)
+                res = slice_years(res, years)  # 指标全量计算后按年切片, 预热不丢失
                 report = run_backtest(res, cost=cost, max_hold=max_hold, presets=PRESETS)
                 report["dates"] = fmt_index(res.index)
-                report["config"] = {"params": params, "cost": cost, "max_hold": max_hold}
+                report["version"] = version
+                report["config"] = {"params": params, "cost": cost,
+                                    "max_hold": max_hold, "years": years}
                 self._send_json(report)
                 return
 
             # /api/compute: 优先用前端缓存的 rows (改参数时不重复拉行情)
             params = clamp_params(req.get("params") or {})
+            version = _norm_version(req.get("version"))
             if req.get("rows"):
                 df = df_from_rows(req["rows"])
             elif req.get("source") == "csv":
                 df = parse_csv_text(req.get("csv") or "")
             else:
                 df = make_sample_data(900, seed=int(req.get("seed") or 7))
-            self._send_json(build_payload(df, params))
+            self._send_json(build_payload(df, params, version))
         except Exception as exc:  # noqa: BLE001 - 错误信息直接回显给前端
             self._send_json({"error": f"{type(exc).__name__}: {exc}"}, 400)
+
+
+def _auto_refresh_loop():
+    """后台数据守护: 每 6 小时刷新默认关注列表的日K缓存。
+
+    fetch_quote 内部有新鲜度判断 (已有今日K线则跳过请求), 因此该循环
+    只在跨日/盘中数据陈旧时才真正发起网络请求, 保证每天及时更新。
+    """
+    while True:
+        for sym in DEFAULT_SYMBOLS:
+            try:
+                fetch_quote(sym, "1d", DEFAULT_COUNT, use_cache=True, force=True)
+            except Exception:  # noqa: BLE001 - 后台刷新失败不影响服务
+                pass
+        time.sleep(6 * 3600)
 
 
 def main():
@@ -470,6 +587,8 @@ def main():
     server = ThreadingHTTPServer(("127.0.0.1", args.port), UiHandler)
     url = f"http://127.0.0.1:{args.port}"
     print(f"KK2 EHOPT10 指标 UI 已启动: {url}  (Ctrl+C 退出)")
+    print(f"K线本地缓存目录: {DATA_DIR}  (每日自动刷新已开启)")
+    threading.Thread(target=_auto_refresh_loop, daemon=True).start()
     if not args.no_browser:
         threading.Timer(0.3, webbrowser.open, args=(url,)).start()
     try:

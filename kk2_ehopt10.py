@@ -39,15 +39,20 @@ import math
 import numpy as np
 import pandas as pd
 
-__all__ = ["compute_ehopt10", "plot_result", "make_sample_data"]
+# B_SCORE_1 的获利筹低位门槛 (原公式 8; 放宽可提升低点覆盖率, 见回测诊断)
+B_CHIP_LOW = 8.0
 
-# 版本说明 (v3, 基于 v1.0.0 移植版的优化):
-#   - 绝反图标 = 原始信号 (参考指标版): 去掉 MA200/FAST_CRASH 过滤
-#     (v2 基线上因过滤过严 1000 根日K 0 触发)
-#   - ★买/★卖 九转信号已弃用 (回测证据: 无预测力甚至反向), 仍计算输出
-#     供事件研究持续观测, 但不用于展示与策略
-#   - S卖 恢复保留; 策略推荐离场为 S条件 评分 (唯一稳定负向预测的卖出信号)
-#   历史 v2 基线见 git tag v1.0.0
+__all__ = ["compute_ehopt10", "VERSIONS", "plot_result", "make_sample_data"]
+
+# 指标版本 (供 UI 切换对比):
+#   v3 = 参考指标版 (git tag v3.0.0): 绝反=原始信号, 3% 反包, 无去重
+#   v4 = 回测驱动的质量优化 (当前默认):
+#        - 反包K线阈值 3% -> 5% (11 标的 52 次触发诊断: 3~4% 弱反弹是主要噪音)
+#        - 同标的 10 日去重 (密集重复触发降噪)
+#        - 10 年验证: 52 -> 29 次触发, 20日 +8.74% -> +15.52%, 胜率 61.5% -> 75.9%
+#   共同口径: ★买/★卖已弃用 (回测证据: 无预测力甚至反向); 绝反不加趋势过滤
+#   (10 年验证: 熊市触发 +4.57% 优于牛市 -5.02%, 趋势过滤全部有害)
+VERSIONS = ("v3", "v4")
 
 
 # ==========================================================================
@@ -290,11 +295,13 @@ def compute_ehopt10(df: pd.DataFrame,
                     SD: int = 20,
                     WIDTH: float = 2,
                     N: int = 4,
-                    OFFSET: int = 15) -> pd.DataFrame:
-    """计算 KK2 EHOPT10 主图指标 (v3 优化版)。
+                    OFFSET: int = 15,
+                    version: str = "v4") -> pd.DataFrame:
+    """计算 KK2 EHOPT10 主图指标。
 
     参数与富途指标参数表一致:
       SD=20, WIDTH=2, N=4, OFFSET=15 (默认值见参数表截图)
+      version: "v4" 优化版 (默认, 绝反 5%反包+10日去重) | "v3" 参考指标版
 
     返回 DataFrame, 主要输出列:
       DIS/MID/UPPER/LOWER          主图布林带
@@ -387,19 +394,28 @@ def compute_ehopt10(df: pd.DataFrame,
     VARB1 = SMA(VARA1, 7, 1)
     VARC1 = SMA(VARB1, 5, 1)
 
-    # ---------- 绝地反弹 (参考指标版: 图标绘制原始信号, 无 MA200/暴跌过滤) ----------
+    # ---------- 绝地反弹 (版本化) ----------
+    # v3: 参考指标原始信号 (3% 反包, 无去重)
+    # v4: 反包阈值 5% + 同标的 10 日去重 (噪音治理, 见模块头注释)
     VAR2N = LLV(LOW, 3) <= LLV(LOW, 60)
-    VAR3N = (CLOSE > OPEN) & ((safe_div(CLOSE, OPEN) > 1.03) | (CLOSE > 1.03 * REF(CLOSE, 1)))
-    juefan = IF(VAR2N & VAR3N & VOLC_B, 20, 0)
+    jf_thr = 1.03 if version == "v3" else 1.05
+    VAR3N = (CLOSE > OPEN) & ((safe_div(CLOSE, OPEN) > jf_thr) | (CLOSE > jf_thr * REF(CLOSE, 1)))
+    JF_RAW = (VAR2N & VAR3N & VOLC_B).fillna(False)  # 未去重原始触发 (供 B_BEAR_SETUP)
+    if version == "v4":
+        jf_gap_prev = REF(BARSLAST(JF_RAW), 1)
+        # 当期成立且距上次触发 >= 10 日 (首次触发放行)。
+        # BARSLAST 在触发当日为 0, 须取前一日值: 前一日距上次 >=9 即今日间隔 >=10。
+        ICON_JUEFAN = JF_RAW & (jf_gap_prev.isna() | (jf_gap_prev >= 9))
+    else:
+        ICON_JUEFAN = JF_RAW  # DRAWICON(绝反, LOW, 34) 原样
+    juefan = IF(ICON_JUEFAN, 20, 0)
     FAST_CRASH = CLOSE < REF(CLOSE, 10) * 0.85
-    # DRAWICON(绝反, LOW, 34) —— 参考指标版: 原始信号直接绘制
-    ICON_JUEFAN = juefan != 0
     # 量能 1.2x 宽松版绝反 (事件研究对照列)
     VOLC_B_LOOSE = (VOL1 > VOL2 * 1.20) | (VOL3 > VOL4 * 1.20) | (VOL5 > VOL6 * 1.20)
     juefan_loose = IF(VAR2N & VAR3N & VOLC_B_LOOSE, 20, 0)
 
     # ---------- B 评分 ----------
-    B_SCORE_1 = IF((REF(profit_chip, 1) < 8) & (profit_chip > REF(profit_chip, 1)), 1, 0)
+    B_SCORE_1 = IF((REF(profit_chip, 1) < B_CHIP_LOW) & (profit_chip > REF(profit_chip, 1)), 1, 0)
     B_SCORE_2 = IF((profit_chip > 30) & (profit_chip < 80)
                    & (CLOSE > 1.02 * REF(CLOSE, 1))
                    & (VOLA > MA(VOLA, 10) * 2.0) & (VOLA < MA(VOLA, 100) * 5.0), 1, 0)
@@ -451,7 +467,7 @@ def compute_ehopt10(df: pd.DataFrame,
 
     # ---------- 综合 B 信号 ----------
     B_BASE_BULL = B_CONDITION & (CLOSE >= MA(CLOSE, 200)) & (~FAST_CRASH)
-    B_BEAR_SETUP = B_CONDITION | (juefan != 0)
+    B_BEAR_SETUP = B_CONDITION | JF_RAW  # 沿用未去重的原始触发
     B_BEAR_RECOVER = (CLOSE < MA(CLOSE, 200)) & (COUNT(REF(B_BEAR_SETUP, 1), 12) > 0) \
         & CROSS(CLOSE, MID) & (MA(CLOSE, 5) > REF(MA(CLOSE, 5), 2)) & (RSI1 > 50) & (MACD > REF(MACD, 2))
     CRASH_SETUP = (LLV(LOW, 3) <= LLV(LOW, 120) * 1.02) & (LOW < MA(CLOSE, 200) * 0.75) \
@@ -767,6 +783,12 @@ def _self_test():
     # 参数变化生效 (截取共同尾部比较, 预热期长度不同)
     res2 = compute_ehopt10(df, SD=60, WIDTH=1.5, N=2, OFFSET=9)
     assert not np.allclose(res["MID"].iloc[-300:], res2["MID"].iloc[-300:])
+
+    # --- 版本不变量: v3 无去重 (触发数 >= v4); v4 相邻触发间隔 >= 10 根 ---
+    r3 = compute_ehopt10(df, version="v3")
+    assert r3["ICON_JUEFAN"].sum() >= res["ICON_JUEFAN"].sum()
+    idx4 = np.where(res["ICON_JUEFAN"].to_numpy())[0]
+    assert all(b - a >= 10 for a, b in zip(idx4, idx4[1:])), "绝反触发间隔 <10"
     cond2 = res2["CLOSE"] > res2["CLOSE"].shift(2)
     assert (res2["NINE2_UP_COUNT"].to_numpy() == BARSLASTCOUNT(cond2).to_numpy()).all()
 
