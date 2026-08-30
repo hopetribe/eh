@@ -389,3 +389,36 @@ def cr(h, l, c, n: int = 26):
     mid = REF((h + l) / 2.0, 1)
     return safe_div((h - mid).clip(lower=0).rolling(n).sum(),
                     (mid - l).clip(lower=0).rolling(n).sum()) * 100.0
+
+
+# ---------------- 别名注册 (与富途指标名一一对应, 便于注册表检索) ----------------
+
+
+@register_indicator("ma")
+def ma_alias(c, n: int = 20):
+    """MA (复用 TDX 算子)。"""
+    return MA(c, n)
+
+
+@register_indicator("ema")
+def ema_alias(c, n: int = 20):
+    """EMA / EXPMA (富途 EXPMA 即 EMA, 复用 TDX 算子)。"""
+    return EMA(c, n)
+
+
+@register_indicator("expma")
+def expma_alias(c, n: int = 20):
+    """EXPMA (富途别名, 同 EMA)。"""
+    return EMA(c, n)
+
+
+@register_indicator("sma")
+def sma_alias(c, n: int = 20):
+    """简单移动平均 SMA (注意与 TDX 递归平滑 SMA(X,N,M) 区分, 此处为滚动均值)。"""
+    return c.rolling(int(n), min_periods=int(n)).mean()
+
+
+@register_indicator("pvt")
+def pvt(c, v):
+    """价量趋势 PVT (与 VPT 同族: Σ V×涨跌幅, 富途单列)。"""
+    return vpt(c, v)
