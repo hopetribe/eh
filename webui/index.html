@@ -85,6 +85,25 @@
   #btEquity { width: 100%; height: 260px; }
   .sec-h { font-size: 13px; font-weight: 600; margin: 16px 0 2px; color: #e8edf4; }
 
+  /* ---------- 选股面板 ---------- */
+  #scrOverlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .55);
+    display: none; z-index: 110; }
+  #scrPanel { position: absolute; top: 0; right: 0; bottom: 0; width: min(940px, 94vw);
+    background: var(--panel); border-left: 1px solid var(--line);
+    overflow-y: auto; padding: 16px 18px 30px; }
+  #scrPanel h2 { margin: 0; font-size: 16px; }
+  #scrPanel table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin: 6px 0 8px; }
+  #scrPanel th, #scrPanel td { border: 1px solid var(--line); padding: 4px 6px;
+    text-align: center; line-height: 1.4; }
+  #scrPanel th { background: var(--panel2); color: var(--muted); font-weight: 500; }
+  .scr-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .scr-row select, .scr-row input[type=text] { background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font-size: 12px; }
+  .scr-row input[type=text] { width: 320px; }
+  .cond-tbl td:first-child { text-align: left; }
+  .pass { color: #35c26e; font-weight: 600; }
+  .fail { color: #ff6b6b; font-weight: 600; }
+
   .param { margin-bottom: 10px; }
   .param .row1 { display: flex; justify-content: space-between; align-items: center; }
   .param .name { font-weight: 600; }
@@ -219,6 +238,10 @@
       <div class="sec-title">回测</div>
       <button class="btn primary" id="btnBacktest" style="width:100%">📊 回测当前标的</button>
     </section>
+    <section>
+      <div class="sec-title">选股</div>
+      <button class="btn primary" id="btnScreener" style="width:100%">🔍 基本面选股</button>
+    </section>
   </aside>
 
   <main id="main">
@@ -226,6 +249,34 @@
     <div id="loading">计算中…</div>
     <div id="toast"></div>
   </main>
+</div>
+
+<!-- 选股抽屉 -->
+<div id="scrOverlay">
+  <div id="scrPanel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>基本面选股 <span class="muted">格雷厄姆 / 施洛斯 / 巴菲特 / 聂夫 / 林奇 / 费雪 / 戴维斯</span></h2>
+      <button class="btn" id="scrClose">✕ 关闭</button>
+    </div>
+    <div class="muted">四套大师策略 + 四套扩展策略 · 财报数据来自 Yahoo · 全部条件需满足 · 市值≥50亿元(增长类100亿)</div>
+    <div class="scr-row">
+      <select id="scrStrategy"></select>
+      <select id="scrMarket" class="num" style="width:110px">
+        <option value="us">美股池</option>
+        <option value="hk">港股池</option>
+        <option value="cn">A股池</option>
+      </select>
+      <input id="scrSymbols" type="text" spellcheck="false"
+             placeholder="自定义候选池, 逗号分隔 (留空用市场池)">
+      <button class="btn primary" id="scrRun">▶ 运行选股</button>
+    </div>
+    <div class="muted" id="scrStatus">加载策略中…</div>
+    <div id="scrResult"></div>
+    <div class="sec-h">说明</div>
+    <div class="muted">条件均需满足才算通过; "逐年"类条件按可得年份评估并标注覆盖;
+      财报源通常仅提供最近 4~5 个年度, "近7年/10年"类条件会标记数据不足;
+      市值按 USD≈7.2 / HKD≈0.92 折算人民币。</div>
+  </div>
 </div>
 
 <!-- 回测抽屉 -->
@@ -978,6 +1029,81 @@ function renderCompare(a, b) {
     `v4=${cnt(b, "ICON_JUEFAN")} (5%反包+10日去重) · ` +
     `★买/★卖 两版本均已弃用, 其余信号口径一致</div>`;
   $("#btCompareDiv").innerHTML = html;
+}
+
+/* ============================== 选股面板 ============================== */
+const scrOverlay = $("#scrOverlay");
+let scrMeta = null;
+
+$("#btnScreener").addEventListener("click", async () => {
+  scrOverlay.style.display = "block";
+  if (!scrMeta) {
+    try {
+      const r = await fetch("/api/screener/meta");
+      scrMeta = await r.json();
+      const sel = $("#scrStrategy");
+      sel.innerHTML = scrMeta.strategies.map(v =>
+        `<option value="${v.id}">${v.name} (${v.n_conditions}条·市值≥${Math.round(v.min_mktcap_cny/1e8)}亿)</option>`).join("");
+      $("#scrStatus").textContent = "选择策略与市场后运行";
+    } catch (e) {
+      $("#scrStatus").textContent = "策略加载失败";
+    }
+  }
+});
+$("#scrClose").addEventListener("click", () => (scrOverlay.style.display = "none"));
+scrOverlay.addEventListener("click", (e) => { if (e.target === scrOverlay) scrOverlay.style.display = "none"; });
+$("#scrRun").addEventListener("click", runScreenJob);
+
+async function runScreenJob() {
+  if (state.source !== "sample" && !state.rows && state.source !== "quote") { /* 选股不依赖图表数据 */ }
+  $("#scrStatus").textContent = "选股计算中… (财报数据逐只拉取, 约 2~4 秒/只, 请耐心等待)";
+  $("#scrResult").innerHTML = "";
+  const symbols = $("#scrSymbols").value.trim();
+  const body = {
+    strategy: $("#scrStrategy").value,
+    market: $("#scrMarket").value,
+    symbols: symbols || null,
+  };
+  try {
+    const r = await fetch("/api/screener", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    renderScreen(d);
+    $("#scrStatus").textContent = `通过 ${d.n_passed}/${d.results.length} · ${d.results.length} 只候选`;
+  } catch (e) {
+    $("#scrStatus").textContent = "选股失败";
+    toast("选股失败: " + (e.message || e));
+  }
+}
+
+function renderScreen(d) {
+  const rows = [...d.results].sort((a, b) => (b.passed - a.passed) || (b.n_ok - a.n_ok));
+  let html = `<div class="sec-h">筛选结果 <span class="muted">通过 ${d.n_passed}/${d.results.length}</span></div>`;
+  html += '<table><tr><th>代码</th><th>名称</th><th>市值(亿CNY)</th><th>通过条件</th><th>结论</th></tr>';
+  for (const r of rows) {
+    const mc = r.market_cap_cny ? (r.market_cap_cny / 1e8).toFixed(0) : "--";
+    html += `<tr><td>${r.symbol}</td><td style="text-align:left">${r.name || "--"}</td>` +
+      `<td>${mc}</td><td>${r.n_ok}/${r.n_total}</td>` +
+      `<td class="${r.passed ? "pass" : "fail"}">${r.passed ? "✓ 通过" : "✗"}</td></tr>`;
+  }
+  html += "</table>";
+  html += '<div class="sec-h">逐条件明细</div>';
+  for (const r of rows) {
+    html += `<details><summary style="cursor:pointer;font-size:12px;padding:3px 0">` +
+      `<b>${r.symbol}</b> ${r.name || ""} <span class="${r.passed ? "pass" : "fail"}">` +
+      `${r.passed ? "通过" : r.n_ok + "/" + r.n_total}</span>${r.note ? ' <span class="muted">' + r.note + "</span>" : ""}</summary>` +
+      '<table class="cond-tbl"><tr><th>条件</th><th>当前值</th><th>阈值</th><th>判定</th><th>备注</th></tr>';
+    for (const c of r.conditions) {
+      html += `<tr><td>${c.text}</td><td>${c.value == null ? "--" : c.value}</td>` +
+        `<td>${c.threshold}</td><td class="${c.passed ? "pass" : "fail"}">${c.passed ? "✓" : "✗"}</td>` +
+        `<td class="muted">${c.note || ""}</td></tr>`;
+    }
+    html += "</table></details>";
+  }
+  $("#scrResult").innerHTML = html;
 }
 
 /* ---------- 指标版本切换 ---------- */

@@ -13,6 +13,9 @@ import numpy as np
 import pandas as pd
 
 from gcn.backtest.engine import DEFAULT_SYMBOLS, PRESETS, run_backtest, slice_years
+from gcn.screener.engine import run_screen
+from gcn.screener.strategies import SAMPLE_UNIVERSE as SCREENER_UNIVERSE
+from gcn.screener.strategies import STRATEGIES as SCREENER_STRATEGIES
 from gcn.data.service import (_auto_refresh_loop, DATA_DIR, DEFAULT_COUNT,
                               df_from_rows, fetch_quote, parse_csv_text)
 from gcn.data.sample import make_sample_data
@@ -142,6 +145,14 @@ class UiHandler(BaseHTTPRequestHandler):
             self._send_file(WEBUI / "index.html", "text/html; charset=utf-8")
         elif path == "/echarts.min.js":
             self._send_file(WEBUI / "echarts.min.js", "application/javascript; charset=utf-8")
+        elif path == "/api/screener/meta":
+            self._send_json({
+                "strategies": [{"id": k, "name": v["name"], "theme": v["theme"],
+                                "min_mktcap_cny": v["min_mktcap_cny"],
+                                "n_conditions": len(v["conditions"])}
+                               for k, v in SCREENER_STRATEGIES.items()],
+                "universes": SCREENER_UNIVERSE,
+            })
         elif path == "/favicon.ico":
             self._send(204, b"", "image/x-icon")
         else:
@@ -149,7 +160,8 @@ class UiHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?", 1)[0]
-        if path not in ("/api/compute", "/api/fetch", "/api/parse_csv", "/api/backtest"):
+        if path not in ("/api/compute", "/api/fetch", "/api/parse_csv",
+                        "/api/backtest", "/api/screener"):
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
         try:
@@ -170,6 +182,21 @@ class UiHandler(BaseHTTPRequestHandler):
                 df = parse_csv_text(req.get("csv") or "")
                 self._send_json({"rows": _rows_from_df(df), "source": "csv",
                                  "note": f"已解析 {len(df)} 根K线"})
+                return
+
+            if path == "/api/screener":
+                strategy = str(req.get("strategy") or "graham")
+                if strategy not in SCREENER_STRATEGIES:
+                    raise ValueError(f"未知策略: {strategy}")
+                symbols = ([x.strip().upper() for x in (req.get("symbols") or "").split(",")
+                            if x.strip()]
+                           if req.get("symbols")
+                           else SCREENER_UNIVERSE.get(str(req.get("market") or "us"), []))
+                if not symbols:
+                    raise ValueError("候选池为空")
+                results = run_screen(symbols, strategy, log=False)
+                self._send_json({"strategy": strategy, "results": results,
+                                 "n_passed": sum(1 for r in results if r["passed"])})
                 return
 
             if path == "/api/backtest":
