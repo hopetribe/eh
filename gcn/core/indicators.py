@@ -20,12 +20,20 @@ import math
 import numpy as np
 import pandas as pd
 
-from gcn.core.tdx import MA, REF, _as_series, safe_div
+from gcn.core.tdx import (COUNT, EMA, HHV, LLV, MA, REF, SMA,
+                          _as_series, safe_div)
 from gcn.core.registry import register_indicator
 
 __all__ = [
+    # 波动/方向 (原有)
     "true_range", "atr", "adx", "mfi", "obv", "roc", "cci",
     "bollinger", "rolling_pct_rank",
+    # 富途官方指标扩展: 趋势/重叠
+    "bbi", "sar", "trix", "dma", "macd", "kdj", "rsi",
+    # 富途官方指标扩展: 动量
+    "wr", "bias", "mtm", "psy",
+    # 富途官方指标扩展: 量能与情绪
+    "vr", "emv", "vpt", "volume_ratio", "arbr", "cr",
 ]
 
 
@@ -202,3 +210,182 @@ def _self_test():
 
 if __name__ == "__main__":
     _self_test()
+
+
+# ==========================================================================
+# 富途官方支持指标扩展 (对照富途牛牛技术指标清单)
+# --------------------------------------------------------------------------
+# 口径说明: 与通达信/富途公式系统一致的公式口径; 平滑统一复用 TDX SMA
+# (Y=(M*X+(N-M)*Y')/N), 与国内行情软件数值对齐。
+# ==========================================================================
+
+# ---------------- 趋势 / 重叠类 ----------------
+
+
+@register_indicator("bbi")
+def bbi(c, n1=3, n2=6, n3=12, n4=24):
+    """多空指标 BBI = (MA3 + MA6 + MA12 + MA24) / 4。"""
+    return (MA(c, n1) + MA(c, n2) + MA(c, n3) + MA(c, n4)) / 4.0
+
+
+@register_indicator("sar")
+def sar(h, l, af_step: float = 0.02, af_max: float = 0.2):
+    """抛物线转向 SAR (Wilder 递推, 逐行实现)。
+
+    返回 Series; 上升趋势中 SAR 位于价格下方, 反转时跳转至前极值。
+    """
+    hi, lo = _as_series(h), _as_series(l)
+    h, l = hi.to_numpy(), lo.to_numpy()
+    n = len(h)
+    out = np.full(n, np.nan)
+    if n < 2:
+        return pd.Series(out, index=hi.index)
+    trend = 1.0
+    ep = h[0]
+    af = af_step
+    out[0] = l[0]
+    for i in range(1, n):
+        prev = out[i - 1]
+        cur = prev + af * (ep - prev)
+        if trend > 0:
+            cur = min(cur, l[i - 1], l[i - 2] if i >= 2 else l[i - 1])
+            if l[i] < cur:  # 下破反转
+                trend, cur, ep, af = -1.0, ep, l[i], af_step
+            elif h[i] > ep:
+                ep, af = h[i], min(af + af_step, af_max)
+        else:
+            cur = max(cur, h[i - 1], h[i - 2] if i >= 2 else h[i - 1])
+            if h[i] > cur:  # 上破反转
+                trend, cur, ep, af = 1.0, ep, h[i], af_step
+            elif l[i] < ep:
+                ep, af = l[i], min(af + af_step, af_max)
+        out[i] = cur
+    return pd.Series(out, index=hi.index)
+
+
+@register_indicator("trix")
+def trix(c, n: int = 12):
+    """TRIX: 三重指数平滑的变动率 (%)。"""
+    e3 = EMA(EMA(EMA(c, n), n), n)
+    return safe_div(e3 - REF(e3, 1), REF(e3, 1)) * 100.0
+
+
+@register_indicator("dma")
+def dma(c, n1: int = 10, n2: int = 50, m: int = 10):
+    """DMA 平行线差指标。返回 DataFrame{DIF, DMA}。"""
+    dif = MA(c, n1) - MA(c, n2)
+    return pd.DataFrame({"DIF": dif, "DMA": MA(dif, m)})
+
+
+# ---------------- 动量类 ----------------
+
+
+@register_indicator("macd")
+def macd(c, fast: int = 12, slow: int = 26, sig: int = 9):
+    """MACD。返回 DataFrame{DIF, DEA, MACD} (MACD=(DIF-DEA)*2, 国内口径)。"""
+    dif = EMA(c, fast) - EMA(c, slow)
+    dea = EMA(dif, sig)
+    return pd.DataFrame({"DIF": dif, "DEA": dea, "MACD": (dif - dea) * 2.0})
+
+
+@register_indicator("rsi")
+def rsi(c, n: int = 14):
+    """RSI (TDX/富途口径: SMA(N,1) 平滑)。"""
+    d = c.diff()
+    return safe_div(SMA(d.clip(lower=0), n, 1), SMA(d.abs(), n, 1)) * 100.0
+
+
+@register_indicator("kdj")
+def kdj(h, l, c, n: int = 9, m1: int = 3, m2: int = 3):
+    """KDJ 随机指标。返回 DataFrame{K, D, J}。"""
+    rsv = safe_div(c - LLV(l, n), HHV(h, n) - LLV(l, n)) * 100.0
+    k = SMA(rsv, m1, 1)
+    d = SMA(k, m2, 1)
+    return pd.DataFrame({"K": k, "D": d, "J": 3 * k - 2 * d})
+
+
+@register_indicator("wr")
+def wr(h, l, c, n: int = 10):
+    """威廉指标 WR = (HHV(n)-C)/(HHV(n)-LLV(n))*100。"""
+    hi, lo = HHV(h, n), LLV(l, n)
+    return safe_div(hi - c, hi - lo) * 100.0
+
+
+@register_indicator("bias")
+def bias(c, n: int = 6):
+    """乖离率 BIAS = (C-MA(C,n))/MA(C,n)*100。"""
+    ma_n = MA(c, n)
+    return safe_div(c - ma_n, ma_n) * 100.0
+
+
+@register_indicator("mtm")
+def mtm(c, n: int = 12, m: int = 6):
+    """动量指标 MTM。返回 DataFrame{MTM, MTMMA}。"""
+    mtm_v = c - REF(c, n)
+    return pd.DataFrame({"MTM": mtm_v, "MTMMA": MA(mtm_v, m)})
+
+
+@register_indicator("psy")
+def psy(c, n: int = 12):
+    """心理线 PSY = n 日内上涨天数占比 (%)。"""
+    return COUNT(c > REF(c, 1), n) / float(n) * 100.0
+
+
+# ---------------- 量能与情绪类 ----------------
+
+
+@register_indicator("vr")
+def vr(h, l, c, v, n: int = 26):
+    """成交量比率 VR (TDX 口径: 上涨量*2+平盘量 vs 下跌量*2+平盘量)。"""
+    pc = c.diff()
+    up = v.where(pc > 0, 0.0)
+    dn = v.where(pc < 0, 0.0)
+    eq = v.where(pc == 0, 0.0)
+    return safe_div(up.rolling(n).sum() * 2 + eq.rolling(n).sum(),
+                    dn.rolling(n).sum() * 2 + eq.rolling(n).sum()) * 100.0
+
+
+@register_indicator("emv")
+def emv(h, l, v, n: int = 14, m: int = 9):
+    """简易波动指标 EMV (成交量以万为单位计, 常数仅影响刻度)。
+
+    返回 DataFrame{EMV, EMVMA}。
+    """
+    mid = (h + l) / 2.0
+    dist = mid - REF(mid, 1)
+    box = ((h - l) + (h - l).shift(1)) / 2.0
+    raw = safe_div(dist, safe_div(box, 1e4) * v)
+    return pd.DataFrame({"EMV": raw, "EMVMA": MA(raw, m)})
+
+
+@register_indicator("vpt")
+def vpt(c, v):
+    """成交量趋势 VPT = Σ V * 涨跌幅。"""
+    return (v * safe_div(c.diff(), c.shift(1))).cumsum()
+
+
+@register_indicator("volume_ratio")
+def volume_ratio(v, n: int = 5):
+    """量比 = 当期成交量 / 过去 n 期均量。"""
+    return safe_div(v, REF(MA(v, n), 1))
+
+
+# ---------------- 市场情绪 (AR/BR/CR) ----------------
+
+
+@register_indicator("arbr")
+def arbr(h, l, c, o, n: int = 26):
+    """人气/意愿指标 AR/BR。返回 DataFrame{AR, BR}。"""
+    ar = safe_div((h - o).rolling(n).sum(), (o - l).rolling(n).sum()) * 100.0
+    yc = REF(c, 1)
+    br = safe_div((h - yc).clip(lower=0).rolling(n).sum(),
+                  (yc - l).clip(lower=0).rolling(n).sum()) * 100.0
+    return pd.DataFrame({"AR": ar, "BR": br})
+
+
+@register_indicator("cr")
+def cr(h, l, c, n: int = 26):
+    """能量指标 CR (以昨中间价为基准)。"""
+    mid = REF((h + l) / 2.0, 1)
+    return safe_div((h - mid).clip(lower=0).rolling(n).sum(),
+                    (mid - l).clip(lower=0).rolling(n).sum()) * 100.0
