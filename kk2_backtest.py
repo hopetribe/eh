@@ -35,13 +35,16 @@ from kk2_ehopt10 import compute_ehopt10
 
 TRADING_DAYS = 252
 
-# 参与事件研究的信号列 (与富途指标输出一一对应)
+# 参与事件研究的信号列 (与指标输出一一对应; 列不存在时自动跳过)
+# ★买/★卖 已弃用 (回测证据: 九转星号信号无预测力甚至反向), 保留在事件研究中
+# 仅作为弃用依据的持续观测。
 SIGNAL_LABELS = [
     ("B_SIGNAL", "B买(DRAWICON7)"),
-    ("NINE2_BUY_SIGNAL", "★买(九转买)"),
-    ("ICON_JUEFAN", "绝反(ICON34)"),
+    ("NINE2_BUY_SIGNAL", "★买(九转买,已弃用)"),
+    ("ICON_JUEFAN", "绝反(ICON34,参考指标版)"),
+    ("JUEFAN_LOOSE", "绝反宽松量能(对照)"),
     ("S_SIGNAL", "S卖(DRAWICON8)"),
-    ("NINE2_SELL_SIGNAL", "★卖(九转卖)"),
+    ("NINE2_SELL_SIGNAL", "★卖(九转卖,已弃用)"),
     ("B_CONDITION", "B条件(原始)"),
     ("S_CONDITION", "S条件(原始)"),
     ("B_STAGE_SIGNAL", "阶段底(B_STAGE)"),
@@ -49,14 +52,15 @@ SIGNAL_LABELS = [
 
 HORIZONS = (3, 5, 10, 20)
 
-# 预设策略: 入场信号 -> 离场信号
+# 策略预设: ★买/★卖 九转信号已弃用; S卖 保留, 另提供 S条件 评分离场
 PRESETS = [
     {"name": "B买 → S卖", "entry": ["B_SIGNAL"], "exit": ["S_SIGNAL"]},
-    {"name": "★买 → ★卖", "entry": ["NINE2_BUY_SIGNAL"], "exit": ["NINE2_SELL_SIGNAL"]},
     {"name": "B买+绝反 → S卖", "entry": ["B_SIGNAL", "ICON_JUEFAN"], "exit": ["S_SIGNAL"]},
     {"name": "绝反 → S卖", "entry": ["ICON_JUEFAN"], "exit": ["S_SIGNAL"]},
-    {"name": "B买+绝反 → S卖+★卖", "entry": ["B_SIGNAL", "ICON_JUEFAN"],
-     "exit": ["S_SIGNAL", "NINE2_SELL_SIGNAL"]},
+    {"name": "B买 → S条件", "entry": ["B_SIGNAL"], "exit": ["S_CONDITION"]},
+    {"name": "B买+绝反 → S条件", "entry": ["B_SIGNAL", "ICON_JUEFAN"],
+     "exit": ["S_CONDITION"]},
+    {"name": "绝反 → S条件", "entry": ["ICON_JUEFAN"], "exit": ["S_CONDITION"]},
 ]
 
 
@@ -183,10 +187,12 @@ def _buy_hold(res: pd.DataFrame, cost: float) -> dict:
     return {"equity": equity, "trades": []}
 
 
-def run_backtest(res: pd.DataFrame, cost: float = 0.001, max_hold=None) -> dict:
+def run_backtest(res: pd.DataFrame, cost: float = 0.001, max_hold=None,
+                 presets=None) -> dict:
     """完整回测报告 (纯 Python 数据, 便于 CLI 打印或 JSON 序列化)。"""
+    presets = presets or PRESETS
     strategies = []
-    for p in PRESETS:
+    for p in presets:
         bt = _one_strategy(res, p["entry"], p["exit"], cost, max_hold)
         row = {"name": p["name"], **_perf(bt["equity"], bt["trades"]),
                "exposure": round(_exposure(bt, res), 3)}
@@ -200,7 +206,7 @@ def run_backtest(res: pd.DataFrame, cost: float = 0.001, max_hold=None) -> dict:
     return {
         "events": event_study(res),
         "strategies": strategies,
-        "equity": {**{p["name"]: [round(float(x), 6) for x in p["_equity"]] for p in PRESETS},
+        "equity": {**{p["name"]: [round(float(x), 6) for x in p["_equity"]] for p in presets},
                    "基准: 买入持有": [round(float(x), 6) for x in bh["equity"]]},
     }
 
@@ -289,6 +295,23 @@ def main():
         report = run_backtest(res, cost=args.cost, max_hold=args.max_hold)
         print_report(f"{q['symbol']} ({df.index[0]:%Y-%m-%d} ~ {df.index[-1]:%Y-%m-%d})",
                      params, args.cost, report, len(df))
+        print_sensitivity(df, params, args.cost, args.max_hold)
+
+
+def print_sensitivity(df: pd.DataFrame, params: dict, cost: float, max_hold):
+    """SD 参数敏感性扫描 (检验推荐组合是否依赖特定参数, 过拟合哨兵)。"""
+    print("\n【SD 敏感性扫描 · 推荐组合 B买+绝反 → S条件】")
+    print(f"  {'SD':>5}{'总收益':>10}{'CAGR':>9}{'回撤':>8}{'夏普':>7}{'交易':>5}{'胜率':>7}{'仓位':>6}")
+    for sd in (14, 20, 30, 50):
+        p = dict(params)
+        p["SD"] = sd
+        res = compute_ehopt10(df, version="v3", **p)
+        bt = _one_strategy(res, ["B_SIGNAL", "ICON_JUEFAN"], ["S_CONDITION"], cost, max_hold)
+        st = _perf(bt["equity"], bt["trades"])
+        sharpe = f"{st['sharpe']:.2f}" if st["sharpe"] is not None else "--"
+        win = f"{st['win']:.1f}%" if st["win"] is not None else "--"
+        print(f"  {sd:>5}{st['total']:>+9.1f}%{st['cagr']:>8.1f}%{st['mdd']:>7.1f}%"
+              f"{sharpe:>7}{st['trades']:>5}{win:>7}{_exposure(bt, res) * 100:>5.0f}%")
 
 
 if __name__ == "__main__":

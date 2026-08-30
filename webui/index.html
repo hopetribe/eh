@@ -95,6 +95,19 @@
     border-radius: 6px; padding: 3px 8px; margin: 0 6px 6px 0; font-size: 12px; }
   #summary .chip b { font-weight: 600; }
 
+  /* 可折叠区块 (默认收起) */
+  details.collapse { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); }
+  details.collapse > summary { list-style: none; cursor: pointer;
+    font-size: 12px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase;
+    display: flex; align-items: center; justify-content: space-between; }
+  details.collapse > summary::-webkit-details-marker { display: none; }
+  details.collapse > summary::after { content: "▸"; color: var(--muted); transition: transform .15s; }
+  details.collapse[open] > summary::after { transform: rotate(90deg); }
+
+  .more-link { text-align: center; color: var(--accent); font-size: 12px;
+    padding: 6px; cursor: pointer; border-radius: 6px; margin-top: 4px; }
+  .more-link:hover { background: var(--panel2); }
+
   #sigList { margin-top: 4px; }
   .sig-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px;
     border-radius: 6px; cursor: pointer; }
@@ -125,8 +138,8 @@
 <body>
 <div id="app">
   <aside id="side">
-    <h1>KK2 EHOPT10<span class="ver">v2</span></h1>
-    <div class="muted">富途主图指标 · kk2_ehopt10.py 实时计算</div>
+    <h1>KK2 EHOPT10<span class="ver">v3</span></h1>
+    <div class="muted">富途主图指标 · 优化版 (绝反=参考指标原始信号 · ★买/★卖已弃用)</div>
 
     <section>
       <div class="sec-title">数据</div>
@@ -154,8 +167,9 @@
       </div>
     </section>
 
-    <section>
-      <div class="sec-title">参数</div>
+    <details class="collapse" id="paramSec">
+      <summary>参数</summary>
+      <div style="margin-top:8px">
       <div class="param" data-key="SD">
         <div class="row1"><span class="name">SD <small>2 ~ 120</small></span>
           <input type="number" min="2" max="120" step="1" value="20"></div>
@@ -180,7 +194,8 @@
         <input type="range" min="0" max="1000" step="1" value="15">
         <div class="desc">九转数字标注偏移距离</div>
       </div>
-    </section>
+      </div>
+    </details>
 
     <section>
       <div class="sec-title">最新一根K线</div>
@@ -244,6 +259,7 @@ const state = {
   quoteNote: "",
   csvName: "",
   data: null,                // 最近一次 /api/compute 结果
+  showMoreSignals: false,    // 信号列表是否展开九转9条目
 };
 const chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
 window.addEventListener("resize", () => chart.resize());
@@ -391,9 +407,9 @@ function renderSummary(d) {
     `<span class="chip">${k} <b>${v}</b></span>`).join("");
 }
 
+/* ★买/★卖 已弃用, 不在列表/tooltip 展示 (事件研究中仍持续观测) */
 const SIG_TYPES = [
   ["bSignal", "B买", "b-buy"], ["sSignal", "S卖", "b-sell"],
-  ["buy", "★买", "b-starb"], ["sell", "★卖", "b-stars"],
   ["juefan", "绝反", "b-juefan"], ["upNine", "上九转9", "b-n9"],
   ["downNine", "下九转9", "b-n9d"],
 ];
@@ -401,18 +417,34 @@ const SIG_TYPES = [
 function renderSignals(d) {
   const items = [];
   for (const [key, label, cls] of SIG_TYPES) {
-    for (const i of d[key]) items.push({ i, label, cls });
+    for (const i of d[key]) items.push({ i, label, cls, key });
   }
   items.sort((a, b) => b.i - a.i);
-  const html = items.slice(0, 80).map((it) => `
+  // 上九转9/下九转9 默认折叠, 点击"查看更多信号"展开
+  const isNine = (it) => it.key === "upNine" || it.key === "downNine";
+  const visible = state.showMoreSignals ? items : items.filter((it) => !isNine(it));
+  const hiddenCount = items.length - visible.length;
+  let html = visible.slice(0, 80).map((it) => `
     <div class="sig-item" data-i="${it.i}">
       <span class="d">${d.dates[it.i]}</span>
       <span class="t"><span class="badge ${it.cls}">${it.label}</span></span>
       <span class="p">${num(d.close[it.i])}</span>
     </div>`).join("");
+  if (hiddenCount > 0) {
+    html += state.showMoreSignals
+      ? '<div class="more-link" id="moreSignals">收起九转9信号</div>'
+      : `<div class="more-link" id="moreSignals">查看更多信号 (+${hiddenCount} 九转9)</div>`;
+  } else if (state.showMoreSignals && hiddenCount === 0 && items.some(isNine)) {
+    html += '<div class="more-link" id="moreSignals">收起九转9信号</div>';
+  }
   $("#sigList").innerHTML = html || '<div class="muted">当前参数下无信号</div>';
   $("#sigList").querySelectorAll(".sig-item").forEach((el) => {
     el.addEventListener("click", () => locate(+el.dataset.i));
+  });
+  const more = document.querySelector("#moreSignals");
+  if (more) more.addEventListener("click", () => {
+    state.showMoreSignals = !state.showMoreSignals;
+    if (state.data) renderSignals(state.data);
   });
 }
 
@@ -539,21 +571,6 @@ function renderChart(d) {
       { name: "九转标注", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
         data: pts(d.downNine, (i) => d.low[i]),
         label: mkLabel("9", "bottom", "#FF00FF", OFFSET) },
-      { name: "★买", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
-        data: pts(d.buy, (i) => d.low[i] * 0.98),
-        label: mkLabel("★买", "bottom", "#ffe000", 2) },
-      { name: "★卖", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
-        data: pts(d.sell, (i) => d.high[i] * 1.02),
-        label: mkLabel("★卖", "top", "#ff4dd2", 2) },
-      { name: "B买", type: "effectScatter", xAxisIndex: 0, yAxisIndex: 0,
-        symbol: "circle", symbolSize: 15, z: 14,
-        symbolOffset: [0, 22],
-        rippleEffect: { scale: 2.4, brushType: "stroke" },
-        itemStyle: { color: "#ff3b30", borderColor: "#fff", borderWidth: 1.2,
-                     shadowBlur: 12, shadowColor: "rgba(255,59,48,.95)" },
-        label: { show: true, formatter: "B", position: "inside",
-                 color: "#fff", fontSize: 10, fontWeight: "bold" },
-        data: pts(d.bSignal, (i) => d.low[i]) },
       { name: "S卖", type: "effectScatter", xAxisIndex: 0, yAxisIndex: 0,
         symbol: "circle", symbolSize: 15, z: 14,
         symbolOffset: [0, -22],
@@ -563,6 +580,15 @@ function renderChart(d) {
         label: { show: true, formatter: "S", position: "inside",
                  color: "#fff", fontSize: 10, fontWeight: "bold" },
         data: pts(d.sSignal, (i) => d.high[i]) },
+      { name: "B买", type: "effectScatter", xAxisIndex: 0, yAxisIndex: 0,
+        symbol: "circle", symbolSize: 15, z: 14,
+        symbolOffset: [0, 22],
+        rippleEffect: { scale: 2.4, brushType: "stroke" },
+        itemStyle: { color: "#ff3b30", borderColor: "#fff", borderWidth: 1.2,
+                     shadowBlur: 12, shadowColor: "rgba(255,59,48,.95)" },
+        label: { show: true, formatter: "B", position: "inside",
+                 color: "#fff", fontSize: 10, fontWeight: "bold" },
+        data: pts(d.bSignal, (i) => d.low[i]) },
       { name: "绝反", type: "effectScatter", xAxisIndex: 0, yAxisIndex: 0,
         symbol: "circle", symbolSize: 13, z: 14,
         symbolOffset: [0, 46],

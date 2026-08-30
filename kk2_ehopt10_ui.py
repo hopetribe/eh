@@ -39,7 +39,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from kk2_backtest import run_backtest
+from kk2_backtest import PRESETS, run_backtest
 from kk2_ehopt10 import compute_ehopt10, make_sample_data
 
 ROOT = Path(__file__).resolve().parent
@@ -439,7 +439,7 @@ class UiHandler(BaseHTTPRequestHandler):
                 max_hold = req.get("max_hold")
                 max_hold = int(max_hold) if max_hold else None
                 res = compute_ehopt10(df, **params)
-                report = run_backtest(res, cost=cost, max_hold=max_hold)
+                report = run_backtest(res, cost=cost, max_hold=max_hold, presets=PRESETS)
                 report["dates"] = fmt_index(res.index)
                 report["config"] = {"params": params, "cost": cost, "max_hold": max_hold}
                 self._send_json(report)

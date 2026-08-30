@@ -41,6 +41,14 @@ import pandas as pd
 
 __all__ = ["compute_ehopt10", "plot_result", "make_sample_data"]
 
+# 版本说明 (v3, 基于 v1.0.0 移植版的优化):
+#   - 绝反图标 = 原始信号 (参考指标版): 去掉 MA200/FAST_CRASH 过滤
+#     (v2 基线上因过滤过严 1000 根日K 0 触发)
+#   - ★买/★卖 九转信号已弃用 (回测证据: 无预测力甚至反向), 仍计算输出
+#     供事件研究持续观测, 但不用于展示与策略
+#   - S卖 恢复保留; 策略推荐离场为 S条件 评分 (唯一稳定负向预测的卖出信号)
+#   历史 v2 基线见 git tag v1.0.0
+
 
 # ==========================================================================
 # 一、TDX / 富途公式函数库 (逐个对应公式中用到的内置函数)
@@ -283,7 +291,7 @@ def compute_ehopt10(df: pd.DataFrame,
                     WIDTH: float = 2,
                     N: int = 4,
                     OFFSET: int = 15) -> pd.DataFrame:
-    """计算 KK2 EHOPT10 主图指标。
+    """计算 KK2 EHOPT10 主图指标 (v3 优化版)。
 
     参数与富途指标参数表一致:
       SD=20, WIDTH=2, N=4, OFFSET=15 (默认值见参数表截图)
@@ -379,13 +387,16 @@ def compute_ehopt10(df: pd.DataFrame,
     VARB1 = SMA(VARA1, 7, 1)
     VARC1 = SMA(VARB1, 5, 1)
 
-    # ---------- 绝地反弹 ----------
+    # ---------- 绝地反弹 (参考指标版: 图标绘制原始信号, 无 MA200/暴跌过滤) ----------
     VAR2N = LLV(LOW, 3) <= LLV(LOW, 60)
     VAR3N = (CLOSE > OPEN) & ((safe_div(CLOSE, OPEN) > 1.03) | (CLOSE > 1.03 * REF(CLOSE, 1)))
     juefan = IF(VAR2N & VAR3N & VOLC_B, 20, 0)
     FAST_CRASH = CLOSE < REF(CLOSE, 10) * 0.85
-    # DRAWICON(绝反 AND CLOSE>=MA(CLOSE,200) AND NOT(FAST_CRASH),LOW,34);
-    ICON_JUEFAN = (juefan != 0) & (CLOSE >= MA(CLOSE, 200)) & (~FAST_CRASH)
+    # DRAWICON(绝反, LOW, 34) —— 参考指标版: 原始信号直接绘制
+    ICON_JUEFAN = juefan != 0
+    # 量能 1.2x 宽松版绝反 (事件研究对照列)
+    VOLC_B_LOOSE = (VOL1 > VOL2 * 1.20) | (VOL3 > VOL4 * 1.20) | (VOL5 > VOL6 * 1.20)
+    juefan_loose = IF(VAR2N & VAR3N & VOLC_B_LOOSE, 20, 0)
 
     # ---------- B 评分 ----------
     B_SCORE_1 = IF((REF(profit_chip, 1) < 8) & (profit_chip > REF(profit_chip, 1)), 1, 0)
@@ -541,7 +552,8 @@ def compute_ehopt10(df: pd.DataFrame,
 
     # 信号
     out["绝反"] = juefan
-    out["ICON_JUEFAN"] = ICON_JUEFAN          # DRAWICON(...,LOW,34)
+    out["ICON_JUEFAN"] = ICON_JUEFAN          # DRAWICON(绝反, LOW, 34)
+    out["JUEFAN_LOOSE"] = juefan_loose != 0
     out["B_SCORE"], out["S_SCORE"] = B_SCORE, S_SCORE
     out["B_CONDITION"], out["S_CONDITION"] = B_CONDITION, S_CONDITION
     out["S_CONDITION_DOWN_LONG"] = S_CONDITION_DOWN_LONG
