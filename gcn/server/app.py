@@ -263,6 +263,7 @@ class UiHandler(BaseHTTPRequestHandler):
 
 def main():
     ap = argparse.ArgumentParser(description="KK2 EHOPT10 指标前端 UI")
+    ap.add_argument("--host", default="127.0.0.1", help="监听地址；默认仅本机访问")
     ap.add_argument("--port", type=int, default=8642)
     ap.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
     args = ap.parse_args()
@@ -270,8 +271,9 @@ def main():
     if not (WEBUI / "index.html").exists():
         raise SystemExit(f"缺少前端文件: {WEBUI / 'index.html'}")
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), UiHandler)
-    url = f"http://127.0.0.1:{args.port}"
+    server = ThreadingHTTPServer((args.host, args.port), UiHandler)
+    url_host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host
+    url = f"http://{url_host}:{args.port}"
     print(f"KK2 EHOPT10 指标 UI 已启动: {url}  (Ctrl+C 退出)")
     print(f"K线本地缓存目录: {DATA_DIR}  (每日自动刷新已开启)")
     threading.Thread(target=_auto_refresh_loop, daemon=True).start()
