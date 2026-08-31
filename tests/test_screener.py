@@ -5,13 +5,15 @@ from gcn.screener.strategies import STRATEGIES, get_strategy
 
 
 def test_strategy_definitions_complete():
-    # 四套策略均已结构化定义且字段齐备
-    assert set(STRATEGIES) == {"graham", "growth", "schloss", "buffett"}
+    # 八套策略 (大师四套 + 扩展四套) 均已结构化定义且字段齐备
+    assert set(STRATEGIES) == {"graham", "growth", "schloss", "buffett",
+                               "neff", "lynch", "fisher", "davis"}
     for sid, s in STRATEGIES.items():
         assert s["conditions"] and s["name"] and s["theme"]
         assert s["min_mktcap_cny"] >= GLOBAL_MIN_MKTCAP_CNY
         for c in s["conditions"]:
-            assert c["text"] and c["field"] and c["op"] in ("<", ">", "yearly_gt", "yearly_lt")
+            assert c["text"] and c["field"] and c["op"] in ("<", ">", "between",
+                                                            "yearly_gt", "yearly_lt")
 
 
 def test_condition_eval_simple_ops():

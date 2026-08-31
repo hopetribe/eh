@@ -43,3 +43,9 @@ def test_cache_roundtrip(tmp_path=None):
     back = svc._load_cache("TEST.SYM", "1d")
     assert back is not None and abs(back["close"].iloc[0] - 10.5) < 1e-9
     svc.DATA_DIR = old
+
+
+def test_symbol_lock_identity():
+    from gcn.data.service import _symbol_lock
+    assert _symbol_lock("AAPL") is _symbol_lock("AAPL")   # 同标的复用同一把锁
+    assert _symbol_lock("AAPL") is not _symbol_lock("MSFT")

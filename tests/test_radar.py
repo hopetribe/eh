@@ -1,0 +1,253 @@
+# -*- coding: utf-8 -*-
+"""机会雷达离线测试: 股票池 / 信号提取 / 扫描流程 / 缓存调度 (无网络)。
+
+兼容 tests/run_all.py 的裸函数调用约定, 不依赖 pytest fixture。
+"""
+import tempfile
+import time
+from contextlib import contextmanager
+from pathlib import Path
+
+import pandas as pd
+
+from gcn.radar import engine
+from gcn.radar.universe import RADAR_MARKETS, _static_universe
+
+
+@contextmanager
+def _patched(target, name, value):
+    old = getattr(target, name)
+    setattr(target, name, value)
+    try:
+        yield value
+    finally:
+        setattr(target, name, old)
+
+
+# ---------------- 股票池 ----------------
+
+def test_universe_lists_wellformed():
+    for m, _ in RADAR_MARKETS:
+        lst = _static_universe(m)
+        assert len(lst) == 100, f"{m} 静态池应100只, 实际 {len(lst)}"
+        codes = [c for c, _ in lst]
+        assert len(set(codes)) == 100, f"{m} 代码重复"
+        for c, n in lst:
+            assert n, f"{m} {c} 缺名称"
+            if m == "cn":
+                assert len(c) == 6 and c.isdigit(), c
+            elif m == "hk":
+                assert len(c) == 5 and c.isdigit(), c
+            else:
+                assert c.replace("-", "").isalnum(), c
+
+
+# ---------------- 信号提取 ----------------
+
+def _make_res(n=30, b_at=(), jf_at=()):
+    """构造带 B_SIGNAL/ICON_JUEFAN 布尔列的指标结果 (索引为交易日)。"""
+    idx = pd.bdate_range("2025-08-01", periods=n)
+    res = pd.DataFrame({"CLOSE": [10.0 + i * 0.1 for i in range(n)]}, index=idx)
+    for col, marks in (("B_SIGNAL", b_at), ("ICON_JUEFAN", jf_at)):
+        res[col] = False
+        for days_ago in marks:
+            res.loc[res.index[n - 1 - days_ago], col] = True
+    return res
+
+
+def test_extract_recent_windows():
+    res = _make_res(30, b_at=(2, 20), jf_at=(7,))
+    sigs = engine._extract_recent(res, max_days=15)
+    # days_ago=20 的 B买 超出窗口, 不应出现; 按新 -> 旧 (days_ago 升序)
+    assert [(s["type"], s["days_ago"]) for s in sigs] == [("B买", 2), ("绝反", 7)]
+    assert sigs[1]["date"] == str(res.index[22])[:10]
+    assert sigs[1]["close"] == 12.2
+    # 近一周 (5 根K线) 只剩 B买
+    week = engine._extract_recent(res, max_days=5)
+    assert [(s["type"], s["days_ago"]) for s in week] == [("B买", 2)]
+
+
+def test_extract_recent_empty():
+    res = _make_res(30)
+    assert engine._extract_recent(res, max_days=15) == []
+    assert engine._extract_recent(res.iloc[:0]) == []
+
+
+# ---------------- 单标的扫描 ----------------
+
+def _fake_fetch(rows):
+    return lambda code, interval, count: {"rows": rows[-count:], "source": "cache",
+                                          "symbol": code, "interval": interval,
+                                          "note": ""}
+
+
+def _fake_compute(df, **kw):
+    """绕开真实指标: 输出引擎所需的最小列集合。"""
+    out = pd.DataFrame(index=df.index)
+    out["CLOSE"] = df["close"]
+    out["B_SIGNAL"] = False
+    out["ICON_JUEFAN"] = False
+    out.loc[out.index[-3], "ICON_JUEFAN"] = True  # 3根K线前绝反
+    return out
+
+
+def _synthetic_rows(n=30):
+    idx = pd.bdate_range("2025-08-01", periods=n)
+    return [[t.strftime("%Y-%m-%d"), 10, 11, 9, 10 + i * 0.1, 1000]
+            for i, t in enumerate(idx)]
+
+
+def test_scan_symbol_hit():
+    with _patched(engine, "fetch_quote", _fake_fetch(_synthetic_rows())), \
+         _patched(engine, "compute_ehopt10", _fake_compute):
+        r = engine.scan_symbol("00700", "hk", "腾讯控股")
+    assert r["error"] is None
+    assert r["code"] == "00700" and r["name"] == "腾讯控股" and r["market"] == "hk"
+    assert [s["type"] for s in r["signals"]] == ["绝反"]
+    assert r["signals"][0]["days_ago"] == 2
+    assert r["close"] == 12.9 and r["chg_pct"] == 0.78  # 12.9/12.8-1
+
+
+def test_scan_symbol_error_isolated():
+    def boom(code, interval, count):
+        raise RuntimeError("网络不可用")
+
+    with _patched(engine, "fetch_quote", boom):
+        r = engine.scan_symbol("AAPL", "us", "苹果")
+    assert r["signals"] == [] and "RuntimeError" in r["error"]
+
+
+# ---------------- 市场扫描与调度 ----------------
+
+def test_scan_market_keeps_hits_sorted():
+    def fake_scan(code, market, name="", count=300):
+        if code == "A1":
+            return {"code": code, "market": market, "name": name, "date": "d",
+                    "close": 1, "chg_pct": 0, "error": None,
+                    "signals": [{"type": "B买", "date": "d", "days_ago": 4, "close": 1}]}
+        if code == "A2":
+            return {"code": code, "market": market, "name": name, "date": "d",
+                    "close": 1, "chg_pct": 0, "error": None,
+                    "signals": [{"type": "绝反", "date": "d", "days_ago": 1, "close": 1}]}
+        return {"code": code, "market": market, "name": name, "date": None,
+                "close": None, "chg_pct": None, "signals": [], "error": "无数据"}
+
+    with _patched(engine, "get_universe",
+                  lambda m, n=100, use_cache=True:
+                  ([("A1", "甲"), ("A2", "乙"), ("A3", "丙")], "static")), \
+         _patched(engine, "scan_symbol", fake_scan):
+        block = engine.scan_market("us")
+    assert block["n_scanned"] == 3 and block["n_errors"] == 1
+    assert block["universe_source"] == "static"
+    assert [r["code"] for r in block["results"]] == ["A2", "A1"]  # 按最近信号新->旧
+    assert block["n_hits"] == 2
+
+
+def _wait_job(svc, market, timeout=10):
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if (svc.jobs.get(market) or {}).get("status") in ("done", "error"):
+            return svc.jobs[market]
+        time.sleep(0.05)
+    raise AssertionError("后台扫描超时未结束")
+
+
+def test_service_scan_cache_and_fresh():
+    calls = {"n": 0}
+
+    def fake_scan_market(market, progress=None, max_workers=6):
+        calls["n"] += 1
+        return {"market": market, "universe_source": "static", "n_scanned": 100,
+                "n_errors": 0, "n_hits": 1,
+                "results": [{"code": "X1", "market": market, "name": "x",
+                             "date": "d", "close": 1, "chg_pct": 0,
+                             "signals": [{"type": "B买", "date": "d",
+                                          "days_ago": 0, "close": 1}]}],
+                "generated_at": time.time()}
+
+    with tempfile.TemporaryDirectory() as tmp, \
+         _patched(engine, "DATA_DIR", Path(tmp)), \
+         _patched(engine, "scan_market", fake_scan_market):
+        svc = engine.RadarService()
+
+        snap = svc.ensure_fresh(["us"])  # 无缓存 -> 自动开扫
+        assert snap["markets"]["us"]["scanning"]
+        job = _wait_job(svc, "us")
+        assert job["status"] == "done" and calls["n"] == 1
+
+        snap = svc.ensure_fresh(["us"])  # 缓存新鲜 -> 不再重扫
+        assert not snap["markets"]["us"]["scanning"] and calls["n"] == 1
+        assert snap["markets"]["us"]["cache"]["n_hits"] == 1
+
+        started = svc.start_scan(["us", "xx"])  # 强制重扫; 非法市场被忽略
+        assert started == ["us"]
+        _wait_job(svc, "us")
+        assert calls["n"] == 2
+
+        # 结果确实落盘, 可被 load_cache 读回
+        blob = engine.load_cache("us")
+        assert blob["results"][0]["code"] == "X1"
+
+
+def test_service_snapshot_error_kept():
+    def fail_scan(market, progress=None, max_workers=6):
+        raise RuntimeError("断网")
+
+    with tempfile.TemporaryDirectory() as tmp, \
+         _patched(engine, "DATA_DIR", Path(tmp)), \
+         _patched(engine, "scan_market", fail_scan):
+        svc = engine.RadarService()
+        svc.start_scan(["hk"])
+        job = _wait_job(svc, "hk")
+        assert job["status"] == "error" and "断网" in (job.get("error") or "")
+        snap = svc.snapshot(["hk"])
+        assert snap["markets"]["hk"]["job"]["status"] == "error"
+
+
+# ---------------- 日K预热守护 ----------------
+
+def test_warm_market_only_refreshes_stale():
+    """预热只请求陈旧/缺失标的; 新鲜的直接跳过。"""
+    engine._warm_fails.clear()
+    universe = [("FRESH", "甲"), ("STALE", "乙"), ("MISSING", "丙"), ("BAD", "丁")]
+    fetched = []
+
+    def fake_fetch(code, interval, count, force=False):
+        fetched.append(code)
+        if code == "BAD":
+            raise RuntimeError("限流")
+
+    with _patched(engine, "get_universe",
+                  lambda m, n=100, use_cache=True: (universe, "static")), \
+         _patched(engine, "_kline_cache_fresh", lambda c: c == "FRESH"), \
+         _patched(engine, "fetch_quote", fake_fetch):
+        r = engine.warm_market("us")
+    assert r["n_total"] == 4 and r["n_targets"] == 3
+    assert sorted(fetched) == ["BAD", "MISSING", "STALE"]
+    assert r["n_ok"] == 2 and r["n_failed"] == 1 and r["failed"] == ["BAD"]
+
+
+def test_warm_failure_backoff_and_force():
+    """失败标的退避期内跳过, 退避到期/force 时重试。"""
+    engine._warm_fails.clear()
+    universe = [("BAD", "丁")]
+    calls = {"n": 0}
+
+    def fake_fetch(code, interval, count, force=False):
+        calls["n"] += 1
+        raise RuntimeError("限流")
+
+    with _patched(engine, "get_universe",
+                  lambda m, n=100, use_cache=True: (universe, "static")), \
+         _patched(engine, "_kline_cache_fresh", lambda c: False), \
+         _patched(engine, "fetch_quote", fake_fetch):
+        engine.warm_market("us")
+        assert calls["n"] == 1
+        engine.warm_market("us")            # 退避期内 -> 不再请求
+        assert calls["n"] == 1
+        engine._warm_fails.clear()          # 模拟退避到期
+        engine.warm_market("us")
+        assert calls["n"] == 2
+        engine.warm_market("us", force=True)  # force 忽略退避
+        assert calls["n"] == 3
+    engine._warm_fails.clear()

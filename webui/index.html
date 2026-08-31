@@ -104,6 +104,28 @@
   .pass { color: #35c26e; font-weight: 600; }
   .fail { color: #ff6b6b; font-weight: 600; }
 
+  /* ---------- 机会雷达面板 ---------- */
+  #radOverlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .55);
+    display: none; z-index: 110; }
+  #radPanel { position: absolute; top: 0; right: 0; bottom: 0; width: min(940px, 94vw);
+    background: var(--panel); border-left: 1px solid var(--line);
+    overflow-y: auto; padding: 16px 18px 30px; }
+  #radPanel h2 { margin: 0; font-size: 16px; }
+  #radPanel table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0 8px; }
+  #radPanel th, #radPanel td { border: 1px solid var(--line); padding: 5px 8px;
+    text-align: center; line-height: 1.4; }
+  #radPanel th { background: var(--panel2); color: var(--muted); font-weight: 500; }
+  #radPanel tbody tr { cursor: pointer; }
+  #radPanel tbody tr:hover { background: var(--panel2); }
+  #radPanel td.tname { text-align: left; max-width: 200px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .rad-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .rad-row select { background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font-size: 12px; }
+  .rad-mkt { display: inline-block; border-radius: 4px; padding: 1px 6px; font-size: 11px;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--muted); }
+  .rad-up { color: var(--up); } .rad-down { color: var(--down); }
+
   .param { margin-bottom: 10px; }
   .param .row1 { display: flex; justify-content: space-between; align-items: center; }
   .param .name { font-weight: 600; }
@@ -242,6 +264,10 @@
       <div class="sec-title">选股</div>
       <button class="btn primary" id="btnScreener" style="width:100%">🔍 基本面选股</button>
     </section>
+    <section>
+      <div class="sec-title">雷达</div>
+      <button class="btn primary" id="btnRadar" style="width:100%">🚀 机会雷达</button>
+    </section>
   </aside>
 
   <main id="main">
@@ -276,6 +302,37 @@
     <div class="muted">条件均需满足才算通过; "逐年"类条件按可得年份评估并标注覆盖;
       财报源通常仅提供最近 4~5 个年度, "近7年/10年"类条件会标记数据不足;
       市值按 USD≈7.2 / HKD≈0.92 折算人民币。</div>
+  </div>
+</div>
+
+<!-- 机会雷达抽屉 -->
+<div id="radOverlay">
+  <div id="radPanel">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>🚀 机会雷达 <span class="muted">各市场市值前100 · 近期 B买 / 绝反 信号</span></h2>
+      <button class="btn" id="radClose">✕ 关闭</button>
+    </div>
+    <div class="muted">信号为 EHOPT10 v4 口径 (T 日收盘确认) · 点击列表行在主图打开该标的 · 结果缓存 30 分钟, 过期自动后台重扫</div>
+    <div class="rad-row">
+      <select id="radMarket">
+        <option value="all" selected>全部市场</option>
+        <option value="us">美股</option>
+        <option value="hk">港股</option>
+        <option value="cn">A股</option>
+      </select>
+      <select id="radWindow">
+        <option value="3">近3个交易日</option>
+        <option value="5" selected>近1周 (5个交易日)</option>
+        <option value="10">近2周 (10个交易日)</option>
+      </select>
+      <button class="btn primary" id="radScan">⟳ 重新扫描</button>
+      <span class="muted" id="radStatus"></span>
+    </div>
+    <div id="radResult"><div class="muted">加载中…</div></div>
+    <div class="sec-h">说明</div>
+    <div class="muted">股票池为各市场市值前100 (FutuOpenD 在线时动态获取, 否则使用 2025-08 静态快照);
+      三大市场标的的日K数据由服务端守护每小时巡检、每日增量更新, 扫描基本零网络请求;
+      "信号日"为最近出现信号的交易日; 列表按最近信号新 → 旧排序, 同日按代码排序。</div>
   </div>
 </div>
 
@@ -1085,7 +1142,7 @@ function renderScreen(d) {
   html += '<table><tr><th>代码</th><th>名称</th><th>市值(亿CNY)</th><th>通过条件</th><th>结论</th></tr>';
   for (const r of rows) {
     const mc = r.market_cap_cny ? (r.market_cap_cny / 1e8).toFixed(0) : "--";
-    html += `<tr><td>${r.symbol}</td><td style="text-align:left">${r.name || "--"}</td>` +
+    html += `<tr><td>${esc(r.symbol)}</td><td style="text-align:left">${esc(r.name) || "--"}</td>` +
       `<td>${mc}</td><td>${r.n_ok}/${r.n_total}</td>` +
       `<td class="${r.passed ? "pass" : "fail"}">${r.passed ? "✓ 通过" : "✗"}</td></tr>`;
   }
@@ -1093,7 +1150,7 @@ function renderScreen(d) {
   html += '<div class="sec-h">逐条件明细</div>';
   for (const r of rows) {
     html += `<details><summary style="cursor:pointer;font-size:12px;padding:3px 0">` +
-      `<b>${r.symbol}</b> ${r.name || ""} <span class="${r.passed ? "pass" : "fail"}">` +
+      `<b>${esc(r.symbol)}</b> ${esc(r.name) || ""} <span class="${r.passed ? "pass" : "fail"}">` +
       `${r.passed ? "通过" : r.n_ok + "/" + r.n_total}</span>${r.note ? ' <span class="muted">' + r.note + "</span>" : ""}</summary>` +
       '<table class="cond-tbl"><tr><th>条件</th><th>当前值</th><th>阈值</th><th>判定</th><th>备注</th></tr>';
     for (const c of r.conditions) {
@@ -1105,6 +1162,138 @@ function renderScreen(d) {
   }
   $("#scrResult").innerHTML = html;
 }
+
+/* ============================== 机会雷达 ============================== */
+const radOverlay = $("#radOverlay");
+const RADAR_MKT_NAME = { us: "美股", hk: "港股", cn: "A股" };
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");  // 名称/代码来自外部数据源, 防 XSS
+let radarData = null;   // 最近一次 /api/radar 快照 (各市场 job + cache)
+let radarTimer = null;
+
+function stopRadarPoll() {
+  if (radarTimer) { clearTimeout(radarTimer); radarTimer = null; }
+}
+
+async function pollRadar() {
+  try {
+    const r = await fetch("/api/radar");  // 过期/缺失市场服务端自动后台重扫
+    radarData = (await r.json()).markets;
+  } catch (e) {
+    $("#radStatus").textContent = "加载失败";
+    return;
+  }
+  if (radOverlay.style.display === "none") return;
+  renderRadar();
+  if (Object.values(radarData).some((m) => m.scanning)) {
+    stopRadarPoll();
+    radarTimer = setTimeout(pollRadar, 2000);
+  }
+}
+
+async function startRadarScan(market) {
+  stopRadarPoll();
+  $("#radStatus").textContent = "扫描已发起, 服务端后台进行中…";
+  try {
+    await fetch("/api/radar/scan", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ market }),
+    });
+  } catch (e) {
+    $("#radStatus").textContent = "扫描发起失败";
+    return;
+  }
+  radarTimer = setTimeout(pollRadar, 500);
+}
+
+function renderRadar() {
+  const wrap = $("#radResult");
+  if (!radarData) { wrap.innerHTML = '<div class="muted">加载中…</div>'; return; }
+  const mkt = $("#radMarket").value;
+  const win = +$("#radWindow").value;
+  const mkts = mkt === "all" ? ["us", "hk", "cn"] : [mkt];
+  let html = "";
+  let scanning = false;
+  for (const m of mkts) {
+    const b = radarData[m] || {};
+    const cache = b.cache;
+    const job = b.job || {};
+    let status;
+    if (b.scanning) {
+      scanning = true;
+      status = `扫描中 ${job.done || 0}/${job.total || "?"} (完成后自动刷新)`;
+    } else if (cache) {
+      const t = new Date(cache.generated_at * 1000)
+        .toLocaleTimeString("zh-CN", { hour12: false });
+      status = `上次扫描 ${t} · 扫描 ${cache.n_scanned} · 命中 ${cache.n_hits}` +
+        (cache.n_errors ? ` · 失败 ${cache.n_errors}` : "") +
+        (cache.universe_source === "futu" ? "" : " · 静态股票池") +
+        (b.stale ? " · 已过期" : "");
+    } else {
+      status = "尚无数据";
+    }
+    html += `<div class="sec-h">${RADAR_MKT_NAME[m]} <span class="muted">${status}</span></div>`;
+    if (!cache) {
+      html += b.scanning
+        ? '<div class="muted">首次扫描进行中, 约 1~3 分钟/市场, 可先看其他市场…</div>'
+        : '<div class="muted">无缓存, 点击 "⟳ 重新扫描" 开始</div>';
+      continue;
+    }
+    const hits = cache.results.filter((r) => r.signals.some((s) => s.days_ago < win));
+    if (!hits.length) {
+      html += '<div class="muted">窗口内无 B买 / 绝反 信号</div>';
+      continue;
+    }
+    html += "<table><thead><tr><th>市场</th><th>代码</th><th>名称</th>" +
+      "<th>最新价</th><th>涨跌幅%</th><th>信号 (新 → 旧)</th><th>最新K线</th></tr></thead><tbody>";
+    for (const r of hits) {
+      const sigs = r.signals.filter((s) => s.days_ago < win);
+      const sigHtml = sigs.map((s) =>
+        `<span class="badge ${s.type === "B买" ? "b-buy" : "b-juefan"}">${s.type}</span>` +
+        ` <span class="muted" style="font-size:11px">${s.date}</span>`).join("<br>");
+      const chgCls = r.chg_pct == null ? "muted" : (r.chg_pct >= 0 ? "rad-up" : "rad-down");
+      html += `<tr data-code="${esc(r.code)}" data-market="${r.market}">` +
+        `<td><span class="rad-mkt">${RADAR_MKT_NAME[r.market]}</span></td>` +
+        `<td><b>${esc(r.code)}</b></td><td class="tname">${esc(r.name) || "--"}</td>` +
+        `<td>${num(r.close)}</td>` +
+        `<td class="${chgCls}">${r.chg_pct == null ? "--" : r.chg_pct.toFixed(2)}</td>` +
+        `<td>${sigHtml}</td><td class="muted">${r.date || "--"}</td></tr>`;
+    }
+    html += "</tbody></table>";
+  }
+  wrap.innerHTML = html;
+  wrap.querySelectorAll("tbody tr").forEach((tr) => {
+    tr.addEventListener("click", () => openRadarSymbol(tr.dataset.code));
+  });
+  $("#radStatus").textContent = scanning ? "扫描中…" : "就绪";
+}
+
+function openRadarSymbol(code) {
+  radOverlay.style.display = "none";
+  stopRadarPoll();
+  $("#symbol").value = code;
+  $("#interval").value = "1d";
+  loadQuote();
+}
+
+$("#btnRadar").addEventListener("click", () => {
+  radOverlay.style.display = "block";
+  pollRadar();
+});
+$("#radClose").addEventListener("click", () => {
+  radOverlay.style.display = "none";
+  stopRadarPoll();
+});
+radOverlay.addEventListener("click", (e) => {
+  if (e.target === radOverlay) {
+    radOverlay.style.display = "none";
+    stopRadarPoll();
+  }
+});
+$("#radScan").addEventListener("click", () => startRadarScan($("#radMarket").value));
+$("#radMarket").addEventListener("change", renderRadar);
+$("#radWindow").addEventListener("change", renderRadar);
 
 /* ---------- 指标版本切换 ---------- */
 $("#verSel").addEventListener("change", () => {

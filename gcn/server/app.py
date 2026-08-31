@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import threading
+import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from gcn.backtest.engine import DEFAULT_SYMBOLS, PRESETS, run_backtest, slice_years
+from gcn.radar import engine as radar_engine
 from gcn.screener.engine import run_screen
 from gcn.screener.strategies import SAMPLE_UNIVERSE as SCREENER_UNIVERSE
 from gcn.screener.strategies import STRATEGIES as SCREENER_STRATEGIES
@@ -140,7 +142,7 @@ class UiHandler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
     def do_GET(self):
-        path = self.path.split("?", 1)[0]
+        path, _, query = self.path.partition("?")
         if path in ("/", "/index.html"):
             self._send_file(WEBUI / "index.html", "text/html; charset=utf-8")
         elif path == "/echarts.min.js":
@@ -153,6 +155,13 @@ class UiHandler(BaseHTTPRequestHandler):
                                for k, v in SCREENER_STRATEGIES.items()],
                 "universes": SCREENER_UNIVERSE,
             })
+        elif path == "/api/radar":
+            req_markets = {v for k, v in urllib.parse.parse_qsl(query)
+                           if k == "market" and v in radar_engine.MARKETS}
+            markets = sorted(req_markets, key=radar_engine.MARKETS.index) \
+                if req_markets else radar_engine.MARKETS
+            # 过期/缺失的市场自动后台重扫, 先返回现有快照 (不阻塞前端)
+            self._send_json(radar_engine.SERVICE.ensure_fresh(markets))
         elif path == "/favicon.ico":
             self._send(204, b"", "image/x-icon")
         else:
@@ -161,7 +170,7 @@ class UiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?", 1)[0]
         if path not in ("/api/compute", "/api/fetch", "/api/parse_csv",
-                        "/api/backtest", "/api/screener"):
+                        "/api/backtest", "/api/screener", "/api/radar/scan"):
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
         try:
@@ -182,6 +191,19 @@ class UiHandler(BaseHTTPRequestHandler):
                 df = parse_csv_text(req.get("csv") or "")
                 self._send_json({"rows": _rows_from_df(df), "source": "csv",
                                  "note": f"已解析 {len(df)} 根K线"})
+                return
+
+            if path == "/api/radar/scan":
+                market = str(req.get("market") or "all")
+                markets = (radar_engine.MARKETS if market == "all"
+                           else [market] if market in radar_engine.MARKETS
+                           else [])
+                if not markets:
+                    raise ValueError(f"未知市场: {market}")
+                started = radar_engine.SERVICE.start_scan(markets)
+                snap = radar_engine.SERVICE.snapshot(markets)
+                snap["started"] = started
+                self._send_json(snap)
                 return
 
             if path == "/api/screener":
@@ -253,6 +275,8 @@ def main():
     print(f"KK2 EHOPT10 指标 UI 已启动: {url}  (Ctrl+C 退出)")
     print(f"K线本地缓存目录: {DATA_DIR}  (每日自动刷新已开启)")
     threading.Thread(target=_auto_refresh_loop, daemon=True).start()
+    # 机会雷达: 三大市场市值前100标的日K缓存, 每小时巡检增量更新
+    threading.Thread(target=radar_engine.warm_loop, daemon=True).start()
     if not args.no_browser:
         threading.Timer(0.3, webbrowser.open, args=(url,)).start()
     try:
