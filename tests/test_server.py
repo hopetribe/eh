@@ -13,9 +13,11 @@ from gcn.server.app import (
 )
 
 
-def _serve_request(method, path, body=b"", headers=None, raw_length=None):
+def _serve_request(method, path, body=b"", headers=None, raw_length=None,
+                   bound_host="127.0.0.1", allowed_hosts=None):
     server = AppServer(("127.0.0.1", 0), UiHandler)
-    server.bound_host = "127.0.0.1"
+    server.bound_host = bound_host
+    server.allowed_hosts = allowed_hosts
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
@@ -36,6 +38,19 @@ def _serve_request(method, path, body=b"", headers=None, raw_length=None):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_server_accepts_explicit_proxy_host_on_private_binding():
+    status, _, payload = _serve_request(
+        "GET", "/",
+        headers={
+            "Host": "43.160.201.247:8443",
+            "Origin": "https://43.160.201.247:8443",
+        },
+        bound_host="172.17.0.1",
+        allowed_hosts={"43.160.201.247"},
+    )
+    assert status == 200, payload
 
 
 def test_server_rejects_bad_length_type_origin_and_nonfinite_input():

@@ -285,7 +285,8 @@ class UiHandler(BaseHTTPRequestHandler):
             raise RequestError(421, "Host 不在允许列表")
         if _is_loopback(bound_host) and not _is_loopback(request_host):
             raise RequestError(421, "Host 与本地监听地址不匹配")
-        if (not _is_loopback(bound_host) and bound_host not in {"0.0.0.0", "::"}
+        if (not allowed_hosts and not _is_loopback(bound_host)
+                and bound_host not in {"0.0.0.0", "::"}
                 and request_host.lower() != bound_host.lower()):
             raise RequestError(421, "Host 与监听地址不匹配")
 
