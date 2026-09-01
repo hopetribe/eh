@@ -30,6 +30,10 @@ def test_webui_inline_javascript_parses():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_webui_uses_product_name_as_document_title():
+    assert "<title>金筹九转 GCN</title>" in INDEX
+
+
 def test_webui_external_values_are_escaped_or_built_as_text_nodes():
     script = _inline_script()
     assert "drop.replaceChildren" in script
@@ -104,6 +108,22 @@ def test_webui_nested_loading_restores_ready_state_without_duplicate_metrics():
     metrics_start = script.index("const metrics = [")
     metrics = script[metrics_start:script.index("];", metrics_start)]
     assert metrics.count('["九转 上 / 下"') == 1
+
+
+def test_webui_renders_reference_colored_nine_completion_markers():
+    script = _inline_script()
+    assert "const ninePts" in script
+    assert "ninePts(d.upNine" in script
+    assert "ninePts(d.downNine" in script
+    assert 'mkLabel("top", "#22c55e")' in script
+    assert 'mkLabel("bottom", "#d946ef")' in script
+
+
+def test_webui_keeps_every_label_in_completed_nine_turn_sequences_visible():
+    script = _inline_script()
+    assert "const nineLabelSeries" in script
+    assert "labelLayout: { hideOverlap: false }" in script
+    assert script.count("...nineLabelSeries") == 4
 
 
 def test_webui_event_study_uses_excess_return_and_validates_async_payloads():

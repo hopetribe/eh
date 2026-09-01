@@ -23,8 +23,8 @@ import numpy as np
 import pandas as pd
 
 from gcn.core.tdx import (
-    BARSLAST, BARSLASTCOUNT, BETWEEN, COUNT, CROSS, EMA, HHV, IF,
-    LLV, MA, MAXA, POW_, REF, SMA, STDP, STD, safe_div,
+    BACKSET, BARSLAST, BARSLASTCOUNT, BETWEEN, COUNT, CROSS, EMA, HHV, IF,
+    ISLASTBAR, LLV, MA, MAXA, POW_, REF, SMA, STDP, STD, safe_div,
 )
 
 # B_SCORE_1 的获利筹低位门槛 (原公式 8; 放宽可提升低点覆盖率, 见回测诊断)
@@ -291,19 +291,28 @@ def compute_ehopt10(df: pd.DataFrame,
     NINE2_BUY_SIGNAL = NINE2_SIGNAL_DOWN & NINE2_VOL_CONFIRM_DOWN & NINE2_MACD_CROSS_UP & NINE2_FILTER_TREND
     NINE2_SELL_SIGNAL = NINE2_SIGNAL_UP & NINE2_VOL_CONFIRM_UP & NINE2_MACD_CROSS_DOWN & NINE2_FILTER_TREND
 
-    # ==================== NINE2 九转 1-9 标注（因果显示）====================
-    # 每根 K 线只显示当时已经形成的计数；不通过 BACKSET 回填历史，避免图表后见信息。
+    # ==================== NINE2 九转 1-9 标注（按原指标筛选）====================
+    # 完成第 9 根后回显整段 1-9；最新一根仍在 5-8 时显示进行中的整段。
+    # 该显示口径与富途公式一致，仅影响图表标注，不参与交易信号计算。
     NINE2_UP_COUNT = BARSLASTCOUNT(NINE2_COND_UP)
-    NINE2_UP_LABEL = IF(BETWEEN(NINE2_UP_COUNT, 1, 8), NINE2_UP_COUNT, 0)
+    NINE2_UP_9_SHOWN = NINE2_UP_COUNT == 9
+    NINE2_UP_LIVE = ISLASTBAR(idx) & BETWEEN(NINE2_UP_COUNT, 5, 8)
+    NINE2_UP_LABEL = (
+        BACKSET(NINE2_UP_9_SHOWN, 9)
+        | BACKSET(NINE2_UP_LIVE, NINE2_UP_COUNT)
+    ) * NINE2_UP_COUNT
     # DRAWNUMBER(0<LABEL<9, H, LABEL, OFFSET) COLORFF00FF;  DRAWNUMBER(COUNT=9, H, 9) COLORGREEN
     NINE2_UP_LABEL_SHOWN = (NINE2_UP_LABEL > 0) & (NINE2_UP_LABEL < 9)
-    NINE2_UP_9_SHOWN = NINE2_UP_COUNT == 9
 
     NINE2_DOWN_COUNT = BARSLASTCOUNT(NINE2_COND_DOWN)
-    NINE2_DOWN_LABEL = IF(BETWEEN(NINE2_DOWN_COUNT, 1, 8), NINE2_DOWN_COUNT, 0)
+    NINE2_DOWN_9_SHOWN = NINE2_DOWN_COUNT == 9
+    NINE2_DOWN_LIVE = ISLASTBAR(idx) & BETWEEN(NINE2_DOWN_COUNT, 5, 8)
+    NINE2_DOWN_LABEL = (
+        BACKSET(NINE2_DOWN_9_SHOWN, 9)
+        | BACKSET(NINE2_DOWN_LIVE, NINE2_DOWN_COUNT)
+    ) * NINE2_DOWN_COUNT
     # DRAWNUMBER(0<LABEL<9, L, LABEL, -OFFSET) COLORGREEN;  DRAWNUMBER(COUNT=9, L, 9) COLORFF00FF
     NINE2_DOWN_LABEL_SHOWN = (NINE2_DOWN_LABEL > 0) & (NINE2_DOWN_LABEL < 9)
-    NINE2_DOWN_9_SHOWN = NINE2_DOWN_COUNT == 9
 
     # ==========================================================================
     # 输出

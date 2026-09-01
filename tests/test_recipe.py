@@ -28,9 +28,15 @@ def test_recipe_rejects_unknown_version_and_nonpositive_n():
             raise AssertionError(f"应拒绝参数: {kwargs}")
 
 
-def test_nine_turn_labels_do_not_depend_on_future_rows():
-    short = compute_ehopt10(_rising(4), N=1)
-    long = compute_ehopt10(_rising(12), N=1).iloc[:4]
-    assert short["NINE2_UP_LABEL"].tolist() == [0.0, 1.0, 2.0, 3.0]
-    for col in ("NINE2_UP_LABEL", "NINE2_DOWN_LABEL"):
-        assert np.array_equal(short[col].to_numpy(), long[col].to_numpy())
+def test_nine_turn_labels_match_completed_and_live_reference_sequences():
+    incomplete = compute_ehopt10(_rising(5), N=1)
+    assert incomplete["NINE2_UP_LABEL"].tolist() == [0.0] * 5
+
+    live = compute_ehopt10(_rising(7), N=1)
+    assert live["NINE2_UP_LABEL"].tolist() == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+    completed = compute_ehopt10(_rising(12), N=1)
+    assert completed["NINE2_UP_LABEL"].tolist() == [
+        0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0,
+    ]
+    assert completed["NINE2_UP_9"].tolist() == [False] * 9 + [True, False, False]

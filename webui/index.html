@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KK2 EHOPT10 指标</title>
+<title>金筹九转 GCN</title>
 <script src="echarts.min.js"></script>
 <style>
   :root {
@@ -1157,6 +1157,7 @@ function renderChart(d) {
   }
   const pts = (idxArr, yFn) => idxArr.map((i) => [i, yFn(i)]);
   const labelPts = (pairs, yFn) => pairs.map(([i, v]) => [i, yFn(i), v]);
+  const ninePts = (idxArr, yFn) => idxArr.map((i) => [i, yFn(i), 9]);
   const markerPts = (idxArr, yFn, baseOffset, stackAfter = []) => idxArr.map((i) => ({
     value: [i, yFn(i)],
     symbolOffset: [0, baseOffset + (stackAfter.some((arr) => arr.includes(i)) ? Math.sign(baseOffset) * 18 : 0)],
@@ -1180,6 +1181,12 @@ function renderChart(d) {
     type: "scatter", symbol: "circle", symbolSize: 0.1,
     itemStyle: { color: "transparent" }, emphasis: { scale: false },
     labelLayout: { hideOverlap: true }, silent: true, tooltip: { show: false }, z: 12,
+  };
+  // A completed nine-turn sequence is meaningful as the full 1–9 run.  Do not
+  // let the generic collision policy remove alternating digits from the run.
+  const nineLabelSeries = {
+    ...invisible,
+    labelLayout: { hideOverlap: false },
   };
 
   const macdBar = d.macd.map((v) => ({
@@ -1295,12 +1302,18 @@ function renderChart(d) {
         symbol: "none", lineStyle: { width: 1, color: "#eabf45", opacity: .82 }, z: 6 },
       { name: "布林LOWER", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: d.lower,
         symbol: "none", lineStyle: { width: 1, color: "#38bdf8", opacity: .82 }, z: 6 },
-      { name: "九转标注", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
+      { name: "九转标注", ...nineLabelSeries, xAxisIndex: 0, yAxisIndex: 0,
         data: labelPts(d.upLabel, (i) => d.high[i]),
         label: mkLabel("top", "#d946ef") },
-      { name: "九转标注", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
+      { name: "九转标注", ...nineLabelSeries, xAxisIndex: 0, yAxisIndex: 0,
+        data: ninePts(d.upNine, (i) => d.high[i]),
+        label: mkLabel("top", "#22c55e") },
+      { name: "九转标注", ...nineLabelSeries, xAxisIndex: 0, yAxisIndex: 0,
         data: labelPts(d.downLabel, (i) => d.low[i]),
         label: mkLabel("bottom", "#22c55e") },
+      { name: "九转标注", ...nineLabelSeries, xAxisIndex: 0, yAxisIndex: 0,
+        data: ninePts(d.downNine, (i) => d.low[i]),
+        label: mkLabel("bottom", "#d946ef") },
       { name: "S卖", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
         symbol: "circle", symbolSize: 15, z: 14,
         itemStyle: { color: "#22c55e", borderColor: "#dffbe8", borderWidth: 1,

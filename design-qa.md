@@ -48,3 +48,41 @@ Focused review of the mobile signal area confirmed that at 390px the table heade
 - [P3] Consider an optional direct link to the radar workspace if a stable public HTTPS URL is introduced.
 
 final result: passed
+
+# Nine-turn Indicator Markers — Design QA
+
+## Comparison target
+
+- Source visual truth: `/var/folders/q7/zx3ty_wj5116zxv1gtv8djbh0000gn/T/codex-clipboard-3e7a7e22-9e13-4b9d-b2d4-78fbbd029797.png` (Futu TQQQ chart).
+- Local implementation capture: `/Users/eric/.codex/visualizations/2026/09/01/gcn-nine-turn-qa/implementation-2048x1209.png`.
+- Combined review image: `/Users/eric/.codex/visualizations/2026/09/01/gcn-nine-turn-qa/reference-vs-implementation.png`.
+- Viewport: 2048 × 1209 CSS px; TQQQ daily K-line, v4, 2,500 bars.
+
+## Findings and fixes
+
+- [P1, fixed] The iterative implementation displayed every causal 1–8 partial sequence, producing many isolated numbers that do not match the reference indicator. Restored the original display contract: backfill 1–8 only when a sequence completes at 9, or display the current final-bar sequence when it has reached 5–8.
+- [P1, fixed] Completion points existed in the payload and signal history but were omitted from the chart. Added upper-nine and lower-nine chart series using the original reference colors: upper 9 green, lower 9 magenta.
+- [P1, fixed] The generic ECharts collision policy hid alternating digits inside valid completed sequences, so compact runs appeared as 1/3/5/7/9. Nine-turn series now opt out of `hideOverlap`, preserving every 1–9 label while other marker series retain collision protection.
+- The raw consecutive counts remain unchanged because they are used by the existing strategy and tooltip. Only the visual label mask changed.
+
+## Visual verification
+
+- Completed TQQQ sequences now render as compact 1–9 groups at the same turning regions visible in the reference, including the 2026-03-20 lower-nine, 2026-04-14 upper-nine, 2026-06-03 upper-nine, and 2026-07-27 lower-nine completions.
+- Incomplete short runs no longer scatter 1–4 labels across the chart.
+- Every digit in the completed 1–9 runs remains visible at the tested 2048 × 1201 viewport; the previously missing 2/4/6/8 labels are present.
+- The external `九转` legend still toggles all 1–9 label series as one group.
+- Browser console warnings/errors: none.
+
+## Regression evidence
+
+- The v3 and v4 nine-turn label columns are again included in full golden-output comparison.
+- `python3 tests/run_all.py`: 130/130 passed.
+- `python3 -m py_compile gcn/recipes/gcn_main.py tests/test_recipe.py tests/test_golden.py tests/test_webui.py`: passed.
+- `git diff --check`: passed.
+
+Latest comparison evidence:
+
+- `/Users/eric/.codex/visualizations/2026/09/01/gcn-nine-turn-qa/all-digits-2048x1201.png`
+- `/Users/eric/.codex/visualizations/2026/09/01/gcn-nine-turn-qa/reference-vs-all-digits-final.png`
+
+final result: passed
