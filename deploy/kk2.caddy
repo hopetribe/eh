@@ -1,0 +1,30 @@
+# IP-literal clients may omit SNI, so make the IP certificate the TLS fallback.
+{
+	default_sni 43.160.201.247
+}
+
+# The production gateway maps host port 8443 to this Caddy instance's port 443.
+# Standard host port 443 remains reserved by the existing Xray service.
+http://43.160.201.247 {
+	redir https://43.160.201.247:8443{uri} 308
+}
+
+43.160.201.247 {
+	tls {
+		issuer acme {
+			dir https://acme-v02.api.letsencrypt.org/directory
+			profile shortlived
+		}
+	}
+
+	encode zstd gzip
+	header {
+		-X-Powered-By
+		-Server
+		Referrer-Policy "same-origin"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+
+	reverse_proxy 172.17.0.1:8642
+}

@@ -35,6 +35,12 @@ python3 -m gcn.server.app --host 0.0.0.0 --allow-remote \
   --allowed-host 192.168.1.20 --no-browser
 ```
 
+生产环境由 Caddy 提供 HTTPS 反向代理，入口为
+`https://43.160.201.247:8443/`；访问 `http://43.160.201.247/` 会保留路径并跳转至 HTTPS。
+应用服务仅绑定 Docker 网桥 `172.17.0.1:8642`，不直接暴露在公网。对应配置见
+`deploy/kk2.service` 和 `deploy/kk2.caddy`。由于主机标准 443 端口由既有 Xray 服务占用，
+网关将公网 8443 映射到 Caddy 的 443 端口。
+
 页面侧栏入口: **数据**(代码/周期/上传CSV) · **参数**(SD/WIDTH/N/OFFSET) · **回测** ·
 **选股** · **雷达**。
 
