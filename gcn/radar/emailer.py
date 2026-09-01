@@ -176,36 +176,100 @@ def build_report(snapshot: dict, now=None,
         )
     text_body = "\n".join(lines)
 
-    summary_html = "".join(f"<li>{html.escape(line)}</li>" for line in summaries)
+    summary_cards = []
+    for market in ("us", "hk", "cn"):
+        state = (snapshot.get("markets") or {}).get(market) or {}
+        cache = state.get("cache") or {}
+        job = state.get("job") or {}
+        summary_cards.append(
+            "<td class=\"summary-cell\" style=\"width:33.333%;padding:4px;vertical-align:top\">"
+            "<div class=\"summary-card\" style=\"padding:12px;background:#f8fafc;border:1px solid #e2e8f0;"
+            "border-radius:8px\">"
+            f"<div style=\"margin-bottom:8px;color:#334155;font-size:12px;font-weight:700\">{html.escape(MARKET_NAMES[market])}</div>"
+            f"<div style=\"color:#64748b;font-size:11px;line-height:1.7\">扫描 {cache.get('n_scanned', 0)} · "
+            f"命中 <strong style=\"color:#dc2626\">{cache.get('n_hits', 0)}</strong> · "
+            f"失败 {cache.get('n_errors', 0)}<br>状态 {html.escape(str(job.get('status', 'unknown')))}</div>"
+            "</div></td>"
+        )
+
     if rows:
         table_rows = []
         for item in rows:
-            sigs = "<br>".join(
-                f"{html.escape(str(sig.get('type', '--')))} "
-                f"<span style=\"color:#64748b\">{html.escape(str(sig.get('date', '--')))}</span>"
-                for sig in item["signals"])
+            signal_bits = []
+            for sig in item["signals"]:
+                signal_type = html.escape(str(sig.get("type", "--")))
+                tone = "signal-buy" if signal_type == "B买" else "signal-reverse"
+                signal_bits.append(
+                    f"<span class=\"signal-pill {tone}\" style=\"display:inline-block;margin:0 4px 4px 0;"
+                    "padding:3px 7px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.3;"
+                    f"{ 'background:#fef2f2;color:#b91c1c;border:1px solid #fecaca' if tone == 'signal-buy' else 'background:#fffbeb;color:#b45309;border:1px solid #fde68a' }\">"
+                    f"{signal_type} <span style=\"font-weight:500\">{html.escape(str(sig.get('date', '--')))}</span></span>"
+                )
             table_rows.append(
-                "<tr>"
-                f"<td>{html.escape(MARKET_NAMES[item['market']])}</td>"
-                f"<td>{html.escape(str(item.get('code', '--')))}</td>"
-                f"<td>{html.escape(str(item.get('name', '') or '--'))}</td>"
-                f"<td style=\"text-align:right\">{html.escape(str(item.get('close', '--')))}</td>"
-                f"<td>{sigs}</td></tr>"
+                "<tr class=\"signal-row\">"
+                "<td class=\"market-cell\" style=\"padding:11px 10px;border-bottom:1px solid #e2e8f0;color:#475569;font-size:12px;white-space:nowrap\">"
+                "<span class=\"cell-label\">市场</span>"
+                f"{html.escape(MARKET_NAMES[item['market']])}</td>"
+                "<td style=\"padding:11px 10px;border-bottom:1px solid #e2e8f0;color:#0f172a;font-size:13px;font-weight:700;white-space:nowrap\">"
+                "<span class=\"cell-label\">代码</span>"
+                f"{html.escape(str(item.get('code', '--')))}</td>"
+                "<td style=\"padding:11px 10px;border-bottom:1px solid #e2e8f0;color:#334155;font-size:13px\">"
+                "<span class=\"cell-label\">名称</span>"
+                f"{html.escape(str(item.get('name', '') or '--'))}</td>"
+                "<td style=\"padding:11px 10px;border-bottom:1px solid #e2e8f0;color:#0f172a;font-size:13px;text-align:right;white-space:nowrap\">"
+                "<span class=\"cell-label\">收盘</span>"
+                f"{html.escape(str(item.get('close', '--')))}</td>"
+                "<td class=\"signal-cell\" style=\"padding:8px 10px;border-bottom:1px solid #e2e8f0;line-height:1.4\">"
+                "<span class=\"cell-label\">信号</span>"
+                f"{''.join(signal_bits)}</td></tr>"
             )
         results_html = (
-            "<table style=\"width:100%;border-collapse:collapse;font-size:13px\">"
-            "<thead><tr><th>市场</th><th>代码</th><th>名称</th><th>收盘</th><th>信号</th></tr></thead>"
+            "<table class=\"signal-table\" role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+            "style=\"width:100%;border-collapse:separate;border-spacing:0;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden\">"
+            "<thead><tr style=\"background:#f8fafc\">"
+            "<th align=\"left\" style=\"padding:10px;color:#64748b;font-size:11px;font-weight:700\">市场</th>"
+            "<th align=\"left\" style=\"padding:10px;color:#64748b;font-size:11px;font-weight:700\">代码</th>"
+            "<th align=\"left\" style=\"padding:10px;color:#64748b;font-size:11px;font-weight:700\">名称</th>"
+            "<th align=\"right\" style=\"padding:10px;color:#64748b;font-size:11px;font-weight:700\">收盘</th>"
+            "<th align=\"left\" style=\"padding:10px;color:#64748b;font-size:11px;font-weight:700\">信号</th>"
+            "</tr></thead>"
             f"<tbody>{''.join(table_rows)}</tbody></table>"
         )
     else:
-        results_html = "<p>近期开窗内无 B买 / 绝反 信号。</p>"
+        results_html = (
+            "<div style=\"padding:22px 16px;color:#64748b;font-size:13px;text-align:center;background:#f8fafc;"
+            "border:1px solid #e2e8f0;border-radius:10px\">近期开窗内无 B买 / 绝反 信号。</div>"
+        )
     html_body = (
-        "<!doctype html><html><body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
-        "color:#17212d\">"
-        f"<h2 style=\"font-size:18px\">GCN 机会雷达 · {day}</h2>"
-        f"<p>窗口：近 {window} 个交易日</p><ul>{summary_html}</ul>{results_html}"
-        "<p style=\"color:#64748b;font-size:12px\">信号为 EHOPT10 v4 口径，T 日收盘确认。</p>"
-        "</body></html>"
+        "<!doctype html><html lang=\"zh-CN\"><head>"
+        "<meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<style>.cell-label{display:none!important}"
+        "@media only screen and (max-width: 600px) {"
+        ".email-shell{padding:0!important}.email-card{border-radius:0!important;border-left:0!important;border-right:0!important}"
+        ".email-content{padding:20px 16px!important}.summary-cell{display:block!important;width:auto!important;padding:4px 0!important}"
+        ".signal-table{border:0!important;border-radius:0!important}.signal-table thead{display:none!important}"
+        ".signal-row{display:block!important;margin:0 0 10px!important;padding:12px!important;background:#ffffff!important;"
+        "border:1px solid #e2e8f0!important;border-radius:8px!important}"
+        ".signal-row td{display:block!important;width:auto!important;padding:3px 0!important;border:0!important;text-align:left!important;"
+        "white-space:normal!important}.signal-row .signal-cell{padding-top:7px!important}.cell-label{display:inline-block!important;"
+        "width:42px!important;color:#94a3b8!important;font-size:11px!important;font-weight:500!important}.market-cell{padding-top:0!important}"
+        "}"
+        "</style></head><body style=\"margin:0;padding:0;background:#f1f5f9;color:#17212d;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif\">"
+        "<table class=\"email-shell\" role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;background:#f1f5f9\"><tr><td align=\"center\" style=\"padding:24px 12px\">"
+        "<table class=\"email-card\" role=\"presentation\" width=\"680\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;max-width:680px;background:#ffffff;border:1px solid #dbe3ed;border-radius:12px;overflow:hidden\">"
+        "<tr><td style=\"padding:22px 24px;background:#0f172a;color:#f8fafc\">"
+        "<div style=\"margin-bottom:5px;font-size:11px;font-weight:700;letter-spacing:.08em;color:#93c5fd\">GCN · 机会雷达日报</div>"
+        f"<div style=\"font-size:22px;font-weight:700;line-height:1.25\">{day} 扫描结果</div>"
+        f"<div style=\"margin-top:7px;color:#cbd5e1;font-size:13px\">近 {window} 个交易日 · {len(rows)} 个标的命中</div>"
+        "</td></tr><tr><td class=\"email-content\" style=\"padding:24px\">"
+        "<div style=\"margin:0 0 10px;color:#334155;font-size:14px;font-weight:700\">市场概览</div>"
+        "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"width:100%;margin:0 0 24px\"><tr>"
+        f"{''.join(summary_cards)}</tr></table>"
+        "<div style=\"margin:0 0 10px;color:#334155;font-size:14px;font-weight:700\">近期信号</div>"
+        f"{results_html}"
+        "<div style=\"margin-top:20px;padding-top:14px;color:#64748b;font-size:11px;line-height:1.6;border-top:1px solid #e2e8f0\">"
+        "信号为 EHOPT10 v4 口径，T 日收盘确认。该邮件为自动扫描摘要，请结合主图和风险管理规则使用。"
+        "</div></td></tr></table></td></tr></table></body></html>"
     )
     return subject, text_body, html_body
 

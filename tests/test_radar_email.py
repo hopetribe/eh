@@ -94,6 +94,19 @@ def test_email_report_and_smtp_delivery():
     assert sent[0].is_multipart()
 
 
+def test_email_report_uses_mobile_responsive_signal_rows():
+    _, _, html = emailer.build_report(_snapshot(), now=1788192000)
+    assert 'class="email-shell"' in html
+    assert '@media only screen and (max-width: 600px)' in html
+    assert 'class="signal-row"' in html
+    assert 'class="cell-label">市场</span>' in html
+
+
+def test_email_report_hides_mobile_field_labels_on_desktop():
+    _, _, html = emailer.build_report(_snapshot(), now=1788192000)
+    assert ".cell-label{display:none!important}" in html
+
+
 def test_next_run_is_daily_nine_in_shanghai():
     before = datetime.fromisoformat("2026-09-01T08:30:00+08:00")
     after = datetime.fromisoformat("2026-09-01T09:00:01+08:00")
