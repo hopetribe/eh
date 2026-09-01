@@ -23,7 +23,8 @@ from gcn.data.service import (DATA_DIR, DEFAULT_COUNT, _cache_is_fresh,
                               _cache_path, _load_cache, _atomic_write_text,
                               fetch_quote)
 from gcn.radar.universe import (MARKET_CAP_CURRENCIES, MARKET_CAP_THRESHOLDS,
-                                RADAR_MARKETS, get_universe)
+                                RADAR_MARKETS, UNIVERSE_CACHE_SCHEMA,
+                                get_universe)
 from gcn.recipes.gcn_main import compute_ehopt10
 
 FETCH_COUNT = 300     # 每标的拉取的日K数量 (指标预热充足)
@@ -123,6 +124,7 @@ def scan_market(market: str, progress=None,
         "market": market,
         "universe_source": src,
         "universe_complete": src != "static-partial",
+        "universe_schema": UNIVERSE_CACHE_SCHEMA,
         "market_cap_threshold": MARKET_CAP_THRESHOLDS[market],
         "market_cap_currency": MARKET_CAP_CURRENCIES[market],
         "n_scanned": len(results),
@@ -164,6 +166,7 @@ class RadarService:
     def _block_view(self, market: str) -> dict:
         cache = load_cache(market)
         stale = (cache is None
+                 or cache.get("universe_schema") != UNIVERSE_CACHE_SCHEMA
                  or time.time() - cache.get("generated_at", 0) > CACHE_TTL)
         return {"cache": cache, "stale": stale}
 
@@ -263,7 +266,7 @@ SERVICE = RadarService()
 
 
 # ============================ 日K预热守护 ============================
-# 目标: 三大市场超过市值阈值的全部标的日K数据常驻本地 (覆盖最近半年以上, 实际存
+# 目标: 三大市场达到市值阈值的全部标的日K数据常驻本地 (覆盖最近半年以上, 实际存
 # 全量合并历史), 每天增量更新一次 —— 复用 fetch_quote 的合并落盘与新鲜度
 # 规则 (当日已刷新过 / 已有今日K线 / 未错失交易日, 则零网络请求)。
 
@@ -326,6 +329,7 @@ def warm_market(market: str, force: bool = False,
                 failed.append(code)
     stats = {"market": market, "universe_source": src,
              "universe_complete": src != "static-partial",
+             "universe_schema": UNIVERSE_CACHE_SCHEMA,
              "market_cap_threshold": MARKET_CAP_THRESHOLDS[market],
              "market_cap_currency": MARKET_CAP_CURRENCIES[market],
              "n_total": len(universe),

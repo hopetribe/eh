@@ -24,7 +24,7 @@ MARKET_CAP_THRESHOLDS = {
     "us": 5_000_000_000.0,   # USD, 50 亿
 }
 MARKET_CAP_CURRENCIES = {"cn": "CNY", "hk": "HKD", "us": "USD"}
-UNIVERSE_CACHE_SCHEMA = 2
+UNIVERSE_CACHE_SCHEMA = 3
 UNIVERSE_PAGE_SIZE = 200
 YAHOO_PAGE_SIZE = 250
 YAHOO_EXCHANGES = {
@@ -203,7 +203,7 @@ def _fetch_futu_threshold(market: str,
                         code = str(getattr(rec, "stock_code", "")).split(".")[-1].strip()
                         name = str(getattr(rec, "stock_name", "") or "")
                         val = float(getattr(rec, "market_val", 0.0) or 0.0)
-                        if code and val > threshold:
+                        if code and val >= threshold:
                             rows.append((val, code, name))
                     begin += len(data)
                     if last_page:
@@ -254,7 +254,7 @@ def _fetch_yahoo_threshold(market: str) -> list[tuple[str, str]] | None:
     try:
         query = yf.EquityQuery("and", [
             yf.EquityQuery("is-in", ["exchange", *YAHOO_EXCHANGES[market]]),
-            yf.EquityQuery("gt", ["intradaymarketcap", threshold]),
+            yf.EquityQuery("gte", ["intradaymarketcap", threshold]),
         ])
         offset = 0
         rows: list[tuple[float, str, str]] = []
@@ -281,7 +281,7 @@ def _fetch_yahoo_threshold(market: str) -> list[tuple[str, str]] | None:
                     continue
                 code = _normalize_yahoo_code(market, item.get("symbol"))
                 value = float(item.get("marketCap") or 0.0)
-                if not code or value <= threshold:
+                if not code or value < threshold:
                     continue
                 name = str(item.get("shortName") or item.get("longName") or code)
                 rows.append((value, code, name))
@@ -305,10 +305,15 @@ def _fetch_yahoo_threshold(market: str) -> list[tuple[str, str]] | None:
     return [(code, name) for _, code, name in ranked]
 
 
-def _read_threshold_cache(market: str) -> dict | None:
+def _read_threshold_cache(market: str, allow_previous: bool = False) -> dict | None:
     try:
         blob = json.loads(_universe_cache_path(market).read_text(encoding="utf-8"))
-        if (blob.get("schema") == UNIVERSE_CACHE_SCHEMA
+        schema = blob.get("schema")
+        schema_matches = (
+            schema == UNIVERSE_CACHE_SCHEMA
+            or (allow_previous and schema == UNIVERSE_CACHE_SCHEMA - 1)
+        )
+        if (schema_matches
                 and float(blob.get("threshold", -1)) == MARKET_CAP_THRESHOLDS[market]
                 and blob.get("list")):
             return blob
@@ -319,7 +324,7 @@ def _read_threshold_cache(market: str) -> dict | None:
 
 def get_universe(market: str, n: int | None = None,
                  use_cache: bool = True) -> tuple[list[tuple[str, str]], str]:
-    """返回 ([(代码, 名称)], 来源)，默认返回超过市值阈值的全部标的。
+    """返回 ([(代码, 名称)], 来源)，默认返回达到市值阈值的全部标的。
 
     来源为 futu / yahoo / dynamic-cache-stale / static-partial。动态源暂不可用时优先复用
     最近一次同阈值快照，避免扫描覆盖面退回固定 Top100。
@@ -327,6 +332,8 @@ def get_universe(market: str, n: int | None = None,
     market = market if market in UNIVERSE else "us"
     cpath = _universe_cache_path(market)
     cached = _read_threshold_cache(market) if use_cache else None
+    previous_cached = (_read_threshold_cache(market, allow_previous=True)
+                       if use_cache and not cached else None)
     if cached and cached.get("day") == time.strftime("%Y-%m-%d"):
         items = [(x[0], x[1]) for x in cached["list"]]
         source = cached.get("provider") if cached.get("provider") in {"futu", "yahoo"} else "futu"
@@ -349,8 +356,9 @@ def get_universe(market: str, n: int | None = None,
              "list": dyn}, ensure_ascii=False))
         return (dyn[:n] if n is not None else dyn), provider
 
-    if cached:
-        items = [(x[0], x[1]) for x in cached["list"]]
+    fallback_cache = cached or previous_cached
+    if fallback_cache:
+        items = [(x[0], x[1]) for x in fallback_cache["list"]]
         return (items[:n] if n is not None else items), "dynamic-cache-stale"
 
     fallback = _static_universe(market)

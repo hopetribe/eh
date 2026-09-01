@@ -44,6 +44,11 @@ def test_universe_lists_wellformed():
                 assert c.replace("-", "").isalnum(), c
 
 
+def test_threshold_cache_schema_tracks_inclusive_boundary():
+    import gcn.radar.universe as universe
+    assert universe.UNIVERSE_CACHE_SCHEMA == 3
+
+
 def test_futu_universe_contract_and_cross_market_deduplication():
     import gcn.radar.universe as universe
     threshold = universe.MARKET_CAP_THRESHOLDS["cn"]
@@ -69,13 +74,14 @@ def test_futu_universe_contract_and_cross_market_deduplication():
     try:
         sys.modules["futu"] = fake_futu
         sys.modules["futu.common.constant"] = fake_constant
-        out = universe._fetch_futu_top("cn", n=3)
+        out = universe._fetch_futu_top("cn", n=4)
     finally:
         if old_futu is None: sys.modules.pop("futu", None)
         else: sys.modules["futu"] = old_futu
         if old_const is None: sys.modules.pop("futu.common.constant", None)
         else: sys.modules["futu.common.constant"] = old_const
-    assert out == [("600519", "茅台"), ("000333", "美的"), ("000001", "平安")]
+    assert out == [("600519", "茅台"), ("000333", "美的"), ("000001", "平安"),
+                   ("000000", "边界")]
     assert seen_filters and all(f.filter_min == threshold and not f.is_no_filter
                                 for f in seen_filters)
 
@@ -94,6 +100,24 @@ def test_threshold_universe_uses_stale_same_schema_cache_before_static():
             json.dumps(blob, ensure_ascii=False), encoding="utf-8")
         items, source = universe.get_universe("us")
     assert items == [("STALE", "旧阈值快照")]
+    assert source == "dynamic-cache-stale"
+
+
+def test_threshold_universe_keeps_previous_schema_as_failure_fallback():
+    import json
+    import gcn.radar.universe as universe
+    with tempfile.TemporaryDirectory() as tmp, \
+         _patched(universe, "DATA_DIR", Path(tmp)), \
+         _patched(universe, "_opend_reachable", lambda: False), \
+         _patched(universe, "_fetch_yahoo_threshold", lambda market: None):
+        blob = {"schema": universe.UNIVERSE_CACHE_SCHEMA - 1,
+                "day": time.strftime("%Y-%m-%d"),
+                "threshold": universe.MARKET_CAP_THRESHOLDS["cn"],
+                "list": [["600519", "旧全量快照"]]}
+        universe._universe_cache_path("cn").write_text(
+            json.dumps(blob, ensure_ascii=False), encoding="utf-8")
+        items, source = universe.get_universe("cn")
+    assert items == [("600519", "旧全量快照")]
     assert source == "dynamic-cache-stale"
 
 
@@ -130,7 +154,7 @@ def test_yahoo_threshold_universe_paginates_and_normalizes_codes():
         if old is None: sys.modules.pop("yfinance", None)
         else: sys.modules["yfinance"] = old
     assert offsets == [0, 2]
-    assert out == [("00700", "腾讯"), ("09988", "阿里")]
+    assert out == [("00700", "腾讯"), ("09988", "阿里"), ("00005", "汇丰")]
 
 
 def test_yahoo_threshold_discards_partial_pagination():
@@ -294,6 +318,7 @@ def test_service_scan_cache_and_fresh():
     def fake_scan_market(market, progress=None, max_workers=6):
         calls["n"] += 1
         return {"market": market, "universe_source": "static", "n_scanned": 100,
+                "universe_schema": engine.UNIVERSE_CACHE_SCHEMA,
                 "n_errors": 0, "n_hits": 1,
                 "results": [{"code": "X1", "market": market, "name": "x",
                              "date": "d", "close": 1, "chg_pct": 0,
@@ -338,6 +363,16 @@ def test_service_snapshot_error_kept():
         assert job["status"] == "error" and "断网" in (job.get("error") or "")
         snap = svc.snapshot(["hk"])
         assert snap["markets"]["hk"]["job"]["status"] == "error"
+
+
+def test_service_marks_previous_universe_schema_cache_stale():
+    old_block = {"market": "us", "n_scanned": 100, "n_errors": 0,
+                 "n_hits": 0, "results": [], "generated_at": time.time()}
+    with tempfile.TemporaryDirectory() as tmp, \
+         _patched(engine, "DATA_DIR", Path(tmp)):
+        engine.save_cache("us", old_block)
+        view = engine.RadarService()._block_view("us")
+    assert view["stale"] is True
 
 
 def test_service_all_symbol_failures_preserve_previous_cache():
