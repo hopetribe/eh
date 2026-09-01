@@ -1,0 +1,17 @@
+[Unit]
+Description=KK2 GoldenChip NineTurn Web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eric
+WorkingDirectory=/home/eric/kk2
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/home/eric/kk2/.env
+ExecStart=/home/eric/venvs/kk2/bin/python -m gcn.server.app --host 0.0.0.0 --port 8642 --allow-remote --allowed-host 43.160.201.247 --no-browser
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
