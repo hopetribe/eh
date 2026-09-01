@@ -1466,6 +1466,149 @@ details.collapse[open] .parameter-body {
   border-radius: 8px;
 }
 
+.rad-email-card {
+  margin: 12px 0 14px;
+  padding: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+}
+
+.rad-email-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rad-email-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.rad-email-state {
+  flex: none;
+  min-height: 22px;
+  padding: 2px 8px;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.rad-email-state.is-ready {
+  color: #86efac;
+  border-color: rgba(34, 197, 94, .38);
+}
+
+.rad-email-state.is-warning {
+  color: #facc15;
+  border-color: rgba(250, 204, 21, .32);
+}
+
+.rad-recipient-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  margin-top: 10px;
+}
+
+.rad-recipient {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  font-family: var(--font-num);
+  font-size: 11px;
+}
+
+.rad-recipient small {
+  margin-left: 6px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+.rad-recipient-remove {
+  width: 26px;
+  height: 26px;
+  margin: 0 -7px 0 5px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.rad-recipient-remove:hover {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, .1);
+}
+
+.rad-recipient-remove:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+.rad-email-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 480px;
+  margin-top: 8px;
+}
+
+.rad-email-form input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.rad-email-form input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(79, 141, 247, .12);
+}
+
+.rad-email-form .btn {
+  height: 36px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.rad-delivery {
+  min-height: 18px;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .rad-email-head,
+  .rad-email-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .rad-email-state {
+    align-self: flex-start;
+  }
+}
+
 @media (min-width: 1024px) and (max-width: 1439px) {
   :root {
     --sidebar-width: 282px;

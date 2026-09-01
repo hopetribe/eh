@@ -20,6 +20,8 @@ from gcn.backtest.engine import (
     PRESETS, TIMEFRAMES, run_backtest, slice_years,
 )
 from gcn.radar import engine as radar_engine
+from gcn.radar import emailer as radar_emailer
+from gcn.radar import scheduler as radar_scheduler
 from gcn.screener.engine import run_screen
 from gcn.screener.strategies import SAMPLE_UNIVERSE as SCREENER_UNIVERSE
 from gcn.screener.strategies import STRATEGIES as SCREENER_STRATEGIES
@@ -346,8 +348,9 @@ class UiHandler(BaseHTTPRequestHandler):
                     "universes": SCREENER_UNIVERSE,
                 })
             elif path == "/api/radar":
-                # 过期/缺失的市场自动后台重扫, 先返回现有快照 (不阻塞前端)
-                self._send_json(radar_engine.SERVICE.ensure_fresh(_parse_markets(query)))
+                self._send_json(radar_engine.SERVICE.snapshot(_parse_markets(query)))
+            elif path == "/api/radar/email":
+                self._send_json(radar_emailer.get_email_settings())
             elif path == "/favicon.ico":
                 self._send(204, b"", "image/x-icon")
             else:
@@ -358,7 +361,8 @@ class UiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?", 1)[0]
         if path not in ("/api/compute", "/api/fetch", "/api/parse_csv",
-                        "/api/backtest", "/api/screener", "/api/radar/scan"):
+                        "/api/backtest", "/api/screener", "/api/radar/scan",
+                        "/api/radar/email"):
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
         if not _API_SLOTS.acquire(blocking=False):
@@ -399,6 +403,12 @@ class UiHandler(BaseHTTPRequestHandler):
                 snap = radar_engine.SERVICE.snapshot(markets)
                 snap["started"] = started
                 self._send_json(snap)
+                return
+
+            if path == "/api/radar/email":
+                settings = radar_emailer.update_recipient(
+                    str(req.get("action") or ""), str(req.get("email") or ""))
+                self._send_json(settings)
                 return
 
             if path == "/api/screener":
@@ -538,8 +548,9 @@ def main():
     print(f"KK2 EHOPT10 指标 UI 已启动: {url}  (Ctrl+C 退出)")
     print(f"K线本地缓存目录: {DATA_DIR}  (每日自动刷新已开启)")
     threading.Thread(target=_auto_refresh_loop, daemon=True).start()
-    # 机会雷达: 三大市场市值前100标的日K缓存, 每小时巡检增量更新
+    # 机会雷达: 阈值股票池日K每小时增量巡检; 每天 09:00 扫描并发送邮件
     threading.Thread(target=radar_engine.warm_loop, daemon=True).start()
+    threading.Thread(target=radar_scheduler.daily_radar_loop, daemon=True).start()
     if not args.no_browser:
         threading.Timer(0.3, webbrowser.open, args=(url,)).start()
     try:

@@ -8,8 +8,8 @@ Python 工程化实现，配套信号回测、基本面选股、机会雷达与�
 - **策略回测**: T+1 开盘成交口径, 信号组合对比 / 资金曲线 / 事件研究 / 分段一致性;
 - **基本面选股**: 八套大师策略 (格雷厄姆/增长双验/施洛斯/巴菲特/聂夫/林奇/费雪/戴维斯双击),
   财报数据来自 Yahoo, 结构化条件逐条判定;
-- **机会雷达**: 主动扫描 A股/港股/美股**市值前100** 标的, 发现**近一周**出现 **B买 / 绝反**
-  信号的股票, 结果缓存 + 每日增量维护行情缓存;
+- **机会雷达**: 主动扫描 A股/港股**总市值 > 100亿本币**、美股**总市值 > 50亿美元**的全部标的,
+  发现近期 **B买 / 绝反** 信号；每天 09:00 扫描并发送邮件日报;
 - **Web UI**: 纯标准库 HTTP 服务 + 原生 JS + ECharts, 无需前端构建工具。
 
 ---
@@ -56,7 +56,7 @@ gcn/
   server/       纯标准库 HTTP 服务 (ThreadingHTTPServer) + JSON API
   backtest/     回测引擎: 信号预设组合, 资金曲线, 事件研究, 分段一致性
   screener/     基本面选股: 策略定义 / 财报指标计算 / 条件求值引擎
-  radar/        机会雷达: 股票池 / 扫描引擎 / 结果缓存 / 日K预热守护
+  radar/        机会雷达: 阈值股票池 / 扫描引擎 / 日K预热 / 每日调度 / 邮件日报
   plot.py       matplotlib 静态画图 (信号标注, 可选)
 webui/          前端单页 (index.html + echarts.min.js)
 tests/          离线测试 (兼容 tests/run_all.py 与 pytest)
@@ -78,8 +78,9 @@ Futu 按合法分页键拉取完整时间窗；两端 OHLC 均统一为复权口
 |---|---|
 | `<SYMBOL>_1d.csv` 等 | 各标的K线 (date, open, high, low, close, volume), 全量合并历史 |
 | `<SYMBOL>_1d.csv.meta.json` | 本地来源/复权元数据与内容摘要（运行时生成，不纳入版本库） |
-| `radar_<market>.json` | 雷达扫描结果缓存 (us/hk/cn, TTL 30 分钟) |
-| `radar_universe_<market>.json` | Futu 动态股票池当日快照 |
+| `radar_<market>.json` | 雷达扫描结果缓存 (us/hk/cn, 每日或手动刷新) |
+| `radar_universe_<market>.json` | Futu 市值阈值动态股票池快照 |
+| `radar_email_settings.json` | 本机附加收件人与最近投递状态（不纳入版本库） |
 
 **新鲜度规则** (避免重复在线请求): 按证券所属市场时区和常规收盘时间计算“最近已完成工作日”，
 缓存最后一根日K覆盖该日才算新鲜；不再把文件 mtime 当作行情更新证据。请求历史长度大于缓存长度时
@@ -92,8 +93,9 @@ Futu 按合法分页键拉取完整时间窗；两端 OHLC 均统一为复权口
 **自动维护**:
 
 - 默认关注标的 (`DEFAULT_SYMBOLS`): 服务启动后每 6 小时检查，仅刷新陈旧或历史长度不足的缓存;
-- **雷达预热守护**: 服务启动时拉起, 每小时巡检 A股/港股/美股各市值前100 (共300只) 的日K
+- **雷达预热守护**: 服务启动时拉起, 每小时巡检 A股/港股 > 100亿本币、美股 > 50亿美元的全部标的日K
   缓存, 只对陈旧/缺失标的发起增量请求；在线失败即使回退到旧缓存，也会进入 6 小时退避。
+- **雷达日报**: 每天 09:00 (`Asia/Shanghai`) 先增量补齐日K、再扫描三市场，全部结束后投递一封汇总邮件。
 
 ---
 
@@ -101,33 +103,51 @@ Futu 按合法分页键拉取完整时间窗；两端 OHLC 均统一为复权口
 
 主动发现各市场大市值标的近期的 B买 / 绝反 信号。
 
-- **股票池** (`gcn/radar/universe.py`): 两级来源 ——
-  1. FutuOpenD 在线时经 `get_stock_filter` 按总市值实时取前 100 (A股 = 沪深合并排序),
-     当日落盘缓存复用;
-  2. 否则使用内置静态快照 (2025-08 口径, 各市场 100 只, 含中文名), 代码格式有测试兜底。
+- **股票池** (`gcn/radar/universe.py`): 优先使用 FutuOpenD `get_stock_filter`，不可用时使用项目已有的
+  yfinance Yahoo Screener；两者都设置总市值下限并分页取全量 (A股 = 沪深合并去重排序)：
+  A股/港股 > 100亿本币，美股 > 50亿美元；同口径快照当日复用。两个动态源暂时都不可用时优先复用
+  最近一次同阈值动态快照；从未成功生成动态快照时才使用各市场 100 只的静态兜底，并在 API/UI 标记
+  `static-partial`（覆盖不完整）。
 - **信号口径** (`gcn/radar/engine.py`): 对每只标的日K计算 EHOPT10 v4,
   提取 `B_SIGNAL` (B买) 与 `ICON_JUEFAN` (绝反); 每标的记录**最近 15 根K线**内的全部信号
   (类型/日期/相对当前交易日的天数/信号日收盘), 前端可本地切换 近3日 / 近1周 (默认) / 近2周 窗口,
   切换无需重新扫描。
-- **结果缓存**: `data/radar_<market>.json`, TTL 30 分钟; 打开雷达面板即拉取快照,
-  过期/缺失的市场自动在后台重扫 (先返回旧数据, 完成后前端轮询自动刷新)。
-  全量缓存命中时, 重扫300只仅需数秒 (纯本地指标计算, 零网络)。全市场全部失败时保留上一版；
+- **结果缓存**: `data/radar_<market>.json`；打开雷达面板只读取快照，不隐式触发大范围扫描。
+  扫描由每日 09:00 调度或“重新扫描”按钮发起。K线缓存命中时为纯本地指标计算；全市场全部失败时保留上一版；
   局部失败时保留并标记失败标的的上一版命中。
+- **邮件日报**: 默认收件人 `hopetribe@gmail.com` 固定保留；雷达抽屉可添加/移除其他收件人并查看最近投递状态。
+  邮件同时包含纯文本与 HTML，汇总各市场扫描/命中/失败数量及近 5 个交易日的命中标的。
 - **点击穿透**: 列表行点击即关闭抽屉, 在主图以日K加载该标的。
 
 ### 雷达 API
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/radar[?market=us,hk,cn]` | 各市场快照: 扫描进度 + 结果缓存 (过期自动后台重扫) |
+| GET | `/api/radar[?market=us,hk,cn]` | 各市场只读快照: 扫描进度 + 结果缓存 |
 | POST | `/api/radar/scan` | 强制重扫, body `{"market": "us"\|"hk"\|"cn"\|"all"}` |
+| GET | `/api/radar/email` | 邮件日程、收件人、SMTP 是否就绪及最近投递状态 |
+| POST | `/api/radar/email` | 添加/移除附加收件人, body `{"action":"add"\|"remove","email":"..."}` |
+
+### 邮件发送配置
+
+SMTP 凭证只从服务进程环境变量读取，不写入配置文件或返回前端。以 Gmail SMTP 为例：
+
+```bash
+export GCN_SMTP_USER="sender@gmail.com"
+export GCN_SMTP_PASSWORD="Gmail 应用专用密码"
+python3 -m gcn.server.app
+```
+
+可选项：`GCN_SMTP_HOST`（默认 `smtp.gmail.com`）、`GCN_SMTP_PORT`（默认 `465`）、
+`GCN_SMTP_FROM`（默认同用户）、`GCN_SMTP_SECURITY`（`ssl` / `starttls` / `none`）。未配置凭证时
+每日扫描仍会执行，但投递状态会明确记录为失败，不会伪报已发送。
 
 ### 雷达 CLI
 
 ```bash
 python3 -m gcn.radar --market all          # 立即预热日K缓存 (只刷陈旧/缺失)
 python3 -m gcn.radar --market us --force   # 强制全量刷新单市场
-python3 -m gcn.radar --loop                # 独立常驻守护 (脱离 Web 服务)
+python3 -m gcn.radar --loop                # 独立常驻守护 (缓存巡检 + 09:00 扫描发信)
 ```
 
 ---
@@ -194,8 +214,9 @@ python3 -m gcn.screener --strategy graham --market us   # CLI 选股 (-v 逐条�
 | POST | `/api/backtest` | 回测 (params/cost/max_hold/years/version/**interval**), 返回 `timeframe` |
 | GET | `/api/screener/meta` | 选股策略元数据 |
 | POST | `/api/screener` | 运行基本面选股 `{strategy, market, symbols}` |
-| GET | `/api/radar` | 雷达快照 (自动续鲜) |
+| GET | `/api/radar` | 雷达只读快照 |
 | POST | `/api/radar/scan` | 雷达强制重扫 |
+| GET/POST | `/api/radar/email` | 邮件收件人和投递状态 |
 | GET | `/` · `/styles.css` · `/echarts.min.js` | 前端静态资源 |
 
 ---
@@ -207,13 +228,14 @@ python3 tests/run_all.py   # TDX算子/黄金样本/指标/回测/CLI/服务/数
 ```
 
 测试全部离线运行 (不访问网络); 雷达与预热逻辑通过 monkeypatch 注入伪数据源,
-覆盖 信号窗口提取 / 扫描排序 / 失败隔离与退避 / 缓存调度 / 并发锁 等关键路径。
+覆盖 市值阈值过滤与动态快照降级 / 信号窗口提取 / 扫描排序 / 失败隔离与退避 /
+每日 09:00 调度 / SMTP 邮件与收件人配置 / 缓存调度 / 并发锁 等关键路径。
 
 ---
 
 ## 已知限制
 
-- 静态股票池为 2025-08 近似快照, 排名随行情漂移; FutuOpenD 在线时自动切换为实时市值排序;
+- Futu 与 Yahoo Screener 同时不可用且本机尚无动态快照时，才会退回 2025-08 静态 Top100 并明确标记覆盖不完整;
 - Yahoo 免费接口偶发限流 (429), 单标的失败不影响整体扫描, 下次巡检自动重试;
 - 新鲜度内置常规工作日和收盘时刻，不内置完整交易所节假日日历；特殊休市可能触发一次空刷新，
   旧缓存会保留，雷达预热进入失败退避;

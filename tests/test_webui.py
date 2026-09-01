@@ -186,6 +186,20 @@ def test_webui_dialogs_and_report_state_are_accessible_and_atomic():
     assert 'id="radStatus" role="status"' in INDEX
 
 
+def test_webui_radar_email_settings_are_accessible_and_escaped():
+    script = _inline_script()
+    assert 'id="radEmailForm"' in INDEX
+    assert 'id="radEmailInput" type="email"' in INDEX
+    assert 'for="radEmailInput"' in INDEX
+    assert 'id="radDelivery" role="status"' in INDEX
+    assert 'fetch("/api/radar/email"' in script
+    assert "validateRadarEmailSettings" in script
+    assert '${esc(email)}' in script
+    assert 'input.reportValidity()' in script
+    assert 'updateRadarRecipient("remove", button.dataset.email)' in script
+    assert "A股/港股 &gt; 100亿" in INDEX
+
+
 def test_webui_screener_meta_requires_semantically_valid_nonempty_strategies():
     script = _inline_script()
     meta = script[script.index('fetch("/api/screener/meta"'):

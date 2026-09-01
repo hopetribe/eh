@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-"""机会雷达扫描引擎: 市值前100标的日K -> EHOPT10 指标 -> 近一周 B买/绝反 信号。
+"""机会雷达扫描引擎: 市值阈值股票池日K -> EHOPT10 指标 -> 近期信号。
 
 设计
 ----
 - 复用 gcn.data.service.fetch_quote 的 K线落盘缓存, 二次扫描基本零网络请求;
-- 扫描结果按市场落盘 data/radar_<market>.json, 新鲜期 CACHE_TTL 秒, 逾期
-  GET 时自动触发后台重扫 (先返回旧数据, 不阻塞前端);
+- 扫描结果按市场落盘 data/radar_<market>.json，由每日 09:00 调度或手动操作刷新;
 - 每标的记录最近 SIGNAL_HISTORY 根K线内的全部信号及距今天数, 前端按
   近3日/近1周/近2周 本地过滤, 切换窗口无需重新扫描;
 - 单只标的失败仅记账, 不阻断整体扫描。
@@ -23,13 +22,14 @@ import pandas as pd
 from gcn.data.service import (DATA_DIR, DEFAULT_COUNT, _cache_is_fresh,
                               _cache_path, _load_cache, _atomic_write_text,
                               fetch_quote)
-from gcn.radar.universe import RADAR_MARKETS, get_universe
+from gcn.radar.universe import (MARKET_CAP_CURRENCIES, MARKET_CAP_THRESHOLDS,
+                                RADAR_MARKETS, get_universe)
 from gcn.recipes.gcn_main import compute_ehopt10
 
 FETCH_COUNT = 300     # 每标的拉取的日K数量 (指标预热充足)
 SCAN_WORKERS = 6      # 并发扫描线程数 (兼顾速度与数据源限流)
 SIGNAL_HISTORY = 15   # 每标的记录最近 N 根K线内的信号 (覆盖 近3日/1周/2周)
-CACHE_TTL = 30 * 60   # 扫描结果新鲜期 (秒)
+CACHE_TTL = 26 * 3600  # 每日扫描结果跨过下一个 09:00 前保持有效
 
 # 关注的信号列 -> 展示名 (与 webui SIG_TYPES 徽章一致)
 SIGNAL_DEFS = [("B_SIGNAL", "B买"), ("ICON_JUEFAN", "绝反")]
@@ -122,6 +122,9 @@ def scan_market(market: str, progress=None,
     return {
         "market": market,
         "universe_source": src,
+        "universe_complete": src != "static-partial",
+        "market_cap_threshold": MARKET_CAP_THRESHOLDS[market],
+        "market_cap_currency": MARKET_CAP_CURRENCIES[market],
         "n_scanned": len(results),
         "n_errors": sum(1 for r in results if r.get("error")),
         "n_hits": len(hits),
@@ -248,7 +251,7 @@ class RadarService:
         return started
 
     def ensure_fresh(self, markets: list[str]) -> dict:
-        """GET 时调用: 过期/缺失的市场自动后台重扫, 立即返回当前快照。"""
+        """兼容显式续鲜调用：过期/缺失市场后台重扫并立即返回旧快照。"""
         need = [m for m in markets
                 if (self.jobs.get(m) or {}).get("status") != "scanning"
                 and self._block_view(m)["stale"]]
@@ -260,7 +263,7 @@ SERVICE = RadarService()
 
 
 # ============================ 日K预热守护 ============================
-# 目标: 三大市场各100只标的的日K数据常驻本地 (覆盖最近半年以上, 实际存
+# 目标: 三大市场超过市值阈值的全部标的日K数据常驻本地 (覆盖最近半年以上, 实际存
 # 全量合并历史), 每天增量更新一次 —— 复用 fetch_quote 的合并落盘与新鲜度
 # 规则 (当日已刷新过 / 已有今日K线 / 未错失交易日, 则零网络请求)。
 
@@ -321,7 +324,11 @@ def warm_market(market: str, force: bool = False,
             else:
                 n_fail += 1
                 failed.append(code)
-    stats = {"market": market, "universe_source": src, "n_total": len(universe),
+    stats = {"market": market, "universe_source": src,
+             "universe_complete": src != "static-partial",
+             "market_cap_threshold": MARKET_CAP_THRESHOLDS[market],
+             "market_cap_currency": MARKET_CAP_CURRENCIES[market],
+             "n_total": len(universe),
              "n_targets": len(targets), "n_ok": n_ok, "n_failed": n_fail,
              "failed": failed}
     if log:
@@ -334,7 +341,7 @@ def warm_market(market: str, force: bool = False,
 def warm_loop(markets: list[str] | None = None, tick: int = WARM_TICK):
     """常驻守护: 每小时巡检各市场, 陈旧标的增量补数 (每日每标的至多一次)。"""
     markets = markets or MARKETS
-    print(f"[radar-warm] 守护已启动: {'/'.join(markets)} 各~100 标的, "
+    print(f"[radar-warm] 守护已启动: {'/'.join(markets)} 市值阈值股票池, "
           f"每 {tick // 60} 分钟巡检, 陈旧才增量请求")
     while True:
         for m in markets:

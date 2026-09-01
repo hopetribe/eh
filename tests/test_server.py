@@ -3,7 +3,9 @@
 import http.client
 import json
 import math
+import tempfile
 import threading
+from pathlib import Path
 
 import gcn.server.app as server_app
 from gcn.server.app import (
@@ -169,3 +171,45 @@ def test_server_classifies_upstream_and_internal_errors_without_details():
         assert status == 500 and b"internal secret" not in payload
     finally:
         server_app.fetch_quote = original
+
+
+def test_radar_email_settings_api_adds_recipient_without_exposing_credentials():
+    original_dir = server_app.radar_emailer.DATA_DIR
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            server_app.radar_emailer.DATA_DIR = Path(tmp)
+            status, _, payload = _serve_request("GET", "/api/radar/email")
+            assert status == 200, payload
+            data = json.loads(payload)
+            assert data["recipients"] == ["hopetribe@gmail.com"]
+            assert "password" not in data
+
+            body = json.dumps({"action": "add", "email": "extra@example.com"}).encode()
+            status, _, payload = _serve_request(
+                "POST", "/api/radar/email", body=body,
+                headers={"Content-Type": "application/json"})
+            assert status == 200, payload
+            assert json.loads(payload)["recipients"] == [
+                "hopetribe@gmail.com", "extra@example.com"]
+    finally:
+        server_app.radar_emailer.DATA_DIR = original_dir
+
+
+def test_radar_snapshot_get_does_not_start_background_scan():
+    class SnapshotOnlyService:
+        def snapshot(self, markets):
+            return {"markets": {market: {"job": {"status": "idle"},
+                                         "cache": None, "scanning": False,
+                                         "stale": True}
+                                for market in markets}}
+        def ensure_fresh(self, markets):
+            raise AssertionError("GET /api/radar 不应触发扫描")
+
+    original = server_app.radar_engine.SERVICE
+    try:
+        server_app.radar_engine.SERVICE = SnapshotOnlyService()
+        status, _, payload = _serve_request("GET", "/api/radar?market=us")
+        assert status == 200, payload
+        assert list(json.loads(payload)["markets"]) == ["us"]
+    finally:
+        server_app.radar_engine.SERVICE = original

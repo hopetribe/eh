@@ -373,10 +373,10 @@
 <div id="radOverlay" aria-hidden="true">
   <div id="radPanel" role="dialog" aria-modal="true" aria-labelledby="radDialogTitle" tabindex="-1">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2 id="radDialogTitle">机会雷达 <span class="muted">各市场市值前100 · 近期 B买 / 绝反 信号</span></h2>
+      <h2 id="radDialogTitle">机会雷达 <span class="muted">A股/港股 &gt; 100亿 · 美股 &gt; 50亿 · 近期 B买 / 绝反</span></h2>
       <button class="btn" id="radClose">关闭</button>
     </div>
-    <div class="muted">信号为 EHOPT10 v4 口径 (T 日收盘确认) · 点击列表行在主图打开该标的 · 结果缓存 30 分钟, 过期自动后台重扫</div>
+    <div class="muted">信号为 EHOPT10 v4 口径 (T 日收盘确认) · 每天 09:00 (Asia/Shanghai) 自动扫描 · 点击列表行在主图打开该标的</div>
     <div class="rad-row">
       <select id="radMarket" aria-label="雷达市场">
         <option value="all" selected>全部市场</option>
@@ -392,10 +392,28 @@
       <button class="btn primary" id="radScan">重新扫描</button>
       <span class="muted" id="radStatus" role="status"></span>
     </div>
+    <section class="rad-email-card" aria-labelledby="radEmailTitle">
+      <div class="rad-email-head">
+        <div>
+          <div class="rad-email-title" id="radEmailTitle">邮件日报</div>
+          <div class="muted">每日扫描完成后发送；默认收件人固定保留，可添加其他邮箱。</div>
+        </div>
+        <span class="rad-email-state" id="radEmailState">读取中</span>
+      </div>
+      <div class="rad-recipient-list" id="radRecipients" aria-live="polite"></div>
+      <form class="rad-email-form" id="radEmailForm">
+        <label class="sr-only" for="radEmailInput">添加雷达日报收件邮箱</label>
+        <input id="radEmailInput" type="email" autocomplete="email"
+               placeholder="添加收件邮箱" maxlength="254" required>
+        <button class="btn" id="radEmailAdd" type="submit">添加邮箱</button>
+      </form>
+      <div class="muted rad-delivery" id="radDelivery" role="status"></div>
+    </section>
     <div id="radResult"><div class="muted">加载中…</div></div>
     <div class="sec-h">说明</div>
-    <div class="muted">股票池为各市场市值前100 (FutuOpenD 在线时动态获取, 否则使用 2025-08 静态快照);
-      三大市场标的的日K数据由服务端守护每小时巡检、每日增量更新, 扫描基本零网络请求;
+    <div class="muted">股票池按本币总市值过滤：A股/港股 &gt; 100亿， 美股 &gt; 50亿；优先使用 FutuOpenD，离线时由 Yahoo Screener 获取完整动态池，
+      两个动态源均不可用时复用最近动态快照，从未生成动态快照时才使用覆盖不完整的静态兜底；
+      日K数据由服务端每小时增量巡检，每日 09:00 扫描并在完成后发送邮件；
       "信号日"为最近出现信号的交易日; 列表按最近信号新 → 旧排序, 同日按代码排序。</div>
   </div>
 </div>
@@ -1932,6 +1950,7 @@ const radOverlay = $("#radOverlay");
 const RADAR_MKT_NAME = { us: "美股", hk: "港股", cn: "A股" };
 let radarData = null;   // 最近一次 /api/radar 快照 (各市场 job + cache)
 let radarTimer = null;
+let radarEmailSettings = null;
 
 function stopRadarPoll() {
   if (radarTimer) { clearTimeout(radarTimer); radarTimer = null; }
@@ -1941,7 +1960,7 @@ function stopRadarPoll() {
 async function pollRadar() {
   const request = beginRequest("radarPoll");
   try {
-    const r = await fetch("/api/radar", { signal: request.signal });  // 过期/缺失市场服务端自动后台重扫
+    const r = await fetch("/api/radar", { signal: request.signal });
     const data = await r.json();
     if (!isCurrentRequest(request)) return;
     if (data.error || !data.markets) throw new Error(data.error || "雷达响应格式无效");
@@ -1958,6 +1977,91 @@ async function pollRadar() {
   if (Object.values(radarData).some((m) => m.scanning)) {
     stopRadarPoll();
     radarTimer = setTimeout(pollRadar, 2000);
+  }
+}
+
+function renderRadarEmailSettings() {
+  const state = $("#radEmailState");
+  const list = $("#radRecipients");
+  const delivery = $("#radDelivery");
+  if (!radarEmailSettings) {
+    state.className = "rad-email-state";
+    state.textContent = "读取中";
+    list.textContent = "";
+    delivery.textContent = "";
+    return;
+  }
+  state.className = "rad-email-state " +
+    (radarEmailSettings.smtp_configured ? "is-ready" : "is-warning");
+  state.textContent = radarEmailSettings.smtp_configured ? "SMTP 已配置" : "待配置 SMTP";
+  list.innerHTML = radarEmailSettings.recipients.map((email) => {
+    const isDefault = email === radarEmailSettings.default_recipient;
+    return `<span class="rad-recipient">${esc(email)}` +
+      (isDefault ? "<small>默认</small>" :
+        `<button class="rad-recipient-remove" type="button" data-email="${esc(email)}" ` +
+        `aria-label="移除收件邮箱 ${esc(email)}">×</button>`) + "</span>";
+  }).join("");
+  const last = radarEmailSettings.last_delivery;
+  if (last?.at) {
+    const at = new Date(last.at * 1000).toLocaleString("zh-CN", { hour12: false });
+    delivery.textContent = `${last.ok ? "最近发送成功" : "最近发送失败"} · ${at} · ${last.message || ""}`;
+  } else {
+    delivery.textContent = radarEmailSettings.smtp_configured
+      ? "尚无发送记录" : "需在服务环境中设置 GCN_SMTP_USER 与 GCN_SMTP_PASSWORD 后才能发送";
+  }
+}
+
+function validateRadarEmailSettings(data) {
+  if (!data || !Array.isArray(data.recipients) ||
+      data.recipients.some((email) => typeof email !== "string") ||
+      typeof data.default_recipient !== "string") {
+    throw new Error("邮件设置响应格式无效");
+  }
+  return data;
+}
+
+async function loadRadarEmailSettings() {
+  const request = beginRequest("radarEmail");
+  try {
+    const response = await fetch("/api/radar/email", { signal: request.signal });
+    const data = await response.json();
+    if (!isCurrentRequest(request)) return;
+    if (!response.ok || data.error) throw new Error(data.error || "邮件设置加载失败");
+    radarEmailSettings = validateRadarEmailSettings(data);
+    renderRadarEmailSettings();
+  } catch (e) {
+    if (isAbortError(e) || !isCurrentRequest(request)) return;
+    $("#radEmailState").className = "rad-email-state is-warning";
+    $("#radEmailState").textContent = "读取失败";
+    $("#radDelivery").textContent = e.message || String(e);
+  } finally {
+    finishRequest(request);
+  }
+}
+
+async function updateRadarRecipient(action, email) {
+  cancelRequest("radarEmail");
+  const request = beginRequest("radarEmailUpdate");
+  const addButton = $("#radEmailAdd");
+  addButton.disabled = true;
+  $("#radDelivery").textContent = action === "add" ? "正在添加收件人…" : "正在移除收件人…";
+  try {
+    const response = await fetch("/api/radar/email", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, email }), signal: request.signal,
+    });
+    const data = await response.json();
+    if (!isCurrentRequest(request)) return;
+    if (!response.ok || data.error) throw new Error(data.error || "邮箱设置更新失败");
+    radarEmailSettings = validateRadarEmailSettings(data);
+    $("#radEmailInput").value = "";
+    renderRadarEmailSettings();
+  } catch (e) {
+    if (isAbortError(e) || !isCurrentRequest(request)) return;
+    $("#radDelivery").textContent = e.message || String(e);
+  } finally {
+    if (isCurrentRequest(request)) addButton.disabled = false;
+    finishRequest(request);
   }
 }
 
@@ -2009,16 +2113,18 @@ function renderRadar() {
         .toLocaleTimeString("zh-CN", { hour12: false });
       status = `上次扫描 ${t} · 扫描 ${cache.n_scanned} · 命中 ${cache.n_hits}` +
         (cache.n_errors ? ` · 失败 ${cache.n_errors}` : "") +
-        (cache.universe_source === "futu" ? "" : " · 静态股票池") +
-        (b.stale ? " · 已过期" : "");
+        (cache.universe_source === "yahoo" ? " · Yahoo动态股票池" : "") +
+        (cache.universe_source === "dynamic-cache-stale" ? " · 最近动态股票池" : "") +
+        (cache.universe_source === "static-partial" ? " · 静态兜底（覆盖不完整）" : "") +
+        (b.stale ? " · 待定时/手动刷新" : "");
     } else {
       status = "尚无数据";
     }
     html += `<div class="sec-h">${RADAR_MKT_NAME[m]} <span class="muted">${status}</span></div>`;
     if (!cache) {
       html += b.scanning
-        ? '<div class="muted">首次扫描进行中, 约 1~3 分钟/市场, 可先看其他市场…</div>'
-        : '<div class="muted">无缓存，点击“重新扫描”开始</div>';
+        ? '<div class="muted">首次扫描进行中，耗时取决于阈值股票池规模，可先看其他市场…</div>'
+        : '<div class="muted">尚无扫描缓存；系统将在 09:00 自动扫描，也可立即手动扫描</div>';
       continue;
     }
     const hits = cache.results.filter((r) => r.signals.some((s) => s.days_ago < win));
@@ -2071,11 +2177,14 @@ function openRadarSymbol(code) {
 $("#btnRadar").addEventListener("click", () => {
   openDialog(radOverlay, $("#radPanel"), $("#btnRadar"));
   pollRadar();
+  loadRadarEmailSettings();
 });
 function closeRadar() {
   closeDialog(radOverlay);
   stopRadarPoll();
   cancelRequest("radarScan");
+  cancelRequest("radarEmail");
+  cancelRequest("radarEmailUpdate");
 }
 $("#radClose").addEventListener("click", closeRadar);
 radOverlay.addEventListener("click", (e) => {
@@ -2084,6 +2193,16 @@ radOverlay.addEventListener("click", (e) => {
 $("#radScan").addEventListener("click", () => startRadarScan($("#radMarket").value));
 $("#radMarket").addEventListener("change", renderRadar);
 $("#radWindow").addEventListener("change", renderRadar);
+$("#radEmailForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const input = $("#radEmailInput");
+  if (!input.reportValidity()) return;
+  updateRadarRecipient("add", input.value.trim());
+});
+$("#radRecipients").addEventListener("click", (event) => {
+  const button = event.target.closest(".rad-recipient-remove");
+  if (button) updateRadarRecipient("remove", button.dataset.email);
+});
 
 /* ---------- 指标版本切换 ---------- */
 $("#verSel").addEventListener("change", () => {

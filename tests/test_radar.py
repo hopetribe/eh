@@ -46,16 +46,20 @@ def test_universe_lists_wellformed():
 
 def test_futu_universe_contract_and_cross_market_deduplication():
     import gcn.radar.universe as universe
+    threshold = universe.MARKET_CAP_THRESHOLDS["cn"]
+    seen_filters = []
     class SimpleFilter: pass
     class Context:
         def __init__(self, **kwargs): pass
         def get_stock_filter(self, market, **kwargs):
+            seen_filters.append(kwargs["filter_list"][0])
             if market == "SH":
-                rows = [SimpleNamespace(stock_code="SH.600519", stock_name="茅台", market_val=100),
-                        SimpleNamespace(stock_code="SZ.000001", stock_name="平安", market_val=80)]
+                rows = [SimpleNamespace(stock_code="SH.600519", stock_name="茅台", market_val=threshold + 100),
+                        SimpleNamespace(stock_code="SZ.000001", stock_name="平安", market_val=threshold + 80),
+                        SimpleNamespace(stock_code="SH.000000", stock_name="边界", market_val=threshold)]
             else:
-                rows = [SimpleNamespace(stock_code="SH.600519", stock_name="茅台", market_val=110),
-                        SimpleNamespace(stock_code="SZ.000333", stock_name="美的", market_val=90)]
+                rows = [SimpleNamespace(stock_code="SH.600519", stock_name="茅台", market_val=threshold + 110),
+                        SimpleNamespace(stock_code="SZ.000333", stock_name="美的", market_val=threshold + 90)]
             return 0, (True, len(rows), rows)
         def close(self): pass
     fake_futu = SimpleNamespace(OpenQuoteContext=Context, SimpleFilter=SimpleFilter,
@@ -72,6 +76,100 @@ def test_futu_universe_contract_and_cross_market_deduplication():
         if old_const is None: sys.modules.pop("futu.common.constant", None)
         else: sys.modules["futu.common.constant"] = old_const
     assert out == [("600519", "茅台"), ("000333", "美的"), ("000001", "平安")]
+    assert seen_filters and all(f.filter_min == threshold and not f.is_no_filter
+                                for f in seen_filters)
+
+
+def test_threshold_universe_uses_stale_same_schema_cache_before_static():
+    import json
+    import gcn.radar.universe as universe
+    with tempfile.TemporaryDirectory() as tmp, \
+         _patched(universe, "DATA_DIR", Path(tmp)), \
+         _patched(universe, "_opend_reachable", lambda: False), \
+         _patched(universe, "_fetch_yahoo_threshold", lambda market: None):
+        blob = {"schema": universe.UNIVERSE_CACHE_SCHEMA, "day": "2020-01-01",
+                "threshold": universe.MARKET_CAP_THRESHOLDS["us"],
+                "list": [["STALE", "旧阈值快照"]]}
+        universe._universe_cache_path("us").write_text(
+            json.dumps(blob, ensure_ascii=False), encoding="utf-8")
+        items, source = universe.get_universe("us")
+    assert items == [("STALE", "旧阈值快照")]
+    assert source == "dynamic-cache-stale"
+
+
+def test_yahoo_threshold_universe_paginates_and_normalizes_codes():
+    import gcn.radar.universe as universe
+    threshold = universe.MARKET_CAP_THRESHOLDS["hk"]
+    offsets = []
+
+    class EquityQuery:
+        def __init__(self, op, args):
+            self.op, self.args = op, args
+
+    def screen(query, offset, size, **kwargs):
+        offsets.append(offset)
+        pages = {
+            0: [
+                {"symbol": "0700.HK", "shortName": "腾讯", "marketCap": threshold + 20,
+                 "quoteType": "EQUITY"},
+                {"symbol": "0005.HK", "shortName": "汇丰", "marketCap": threshold,
+                 "quoteType": "EQUITY"},
+            ],
+            2: [{"symbol": "9988.HK", "longName": "阿里", "marketCap": threshold + 10,
+                 "quoteType": "EQUITY"}],
+        }
+        return {"quotes": pages.get(offset, []), "total": 3}
+
+    fake = SimpleNamespace(EquityQuery=EquityQuery, screen=screen)
+    old = sys.modules.get("yfinance")
+    try:
+        sys.modules["yfinance"] = fake
+        with _patched(universe, "YAHOO_PAGE_SIZE", 2):
+            out = universe._fetch_yahoo_threshold("hk")
+    finally:
+        if old is None: sys.modules.pop("yfinance", None)
+        else: sys.modules["yfinance"] = old
+    assert offsets == [0, 2]
+    assert out == [("00700", "腾讯"), ("09988", "阿里")]
+
+
+def test_yahoo_threshold_discards_partial_pagination():
+    import gcn.radar.universe as universe
+    threshold = universe.MARKET_CAP_THRESHOLDS["us"]
+
+    class EquityQuery:
+        def __init__(self, op, args): pass
+
+    def screen(query, offset, size, **kwargs):
+        quotes = ([{"symbol": "AAPL", "shortName": "苹果",
+                    "marketCap": threshold + 1, "quoteType": "EQUITY"},
+                   {"symbol": "MSFT", "shortName": "微软",
+                    "marketCap": threshold + 2, "quoteType": "EQUITY"}]
+                  if offset == 0 else [])
+        return {"quotes": quotes, "total": 4}
+
+    fake = SimpleNamespace(EquityQuery=EquityQuery, screen=screen)
+    old = sys.modules.get("yfinance")
+    try:
+        sys.modules["yfinance"] = fake
+        with _patched(universe, "YAHOO_PAGE_SIZE", 2):
+            out = universe._fetch_yahoo_threshold("us")
+    finally:
+        if old is None: sys.modules.pop("yfinance", None)
+        else: sys.modules["yfinance"] = old
+    assert out is None
+
+
+def test_get_universe_uses_yahoo_when_opend_is_offline():
+    import gcn.radar.universe as universe
+    with tempfile.TemporaryDirectory() as tmp, \
+         _patched(universe, "DATA_DIR", Path(tmp)), \
+         _patched(universe, "_opend_reachable", lambda: False), \
+         _patched(universe, "_fetch_yahoo_threshold", lambda market: [("YHOO", "动态池")]):
+        items, source = universe.get_universe("us", use_cache=False)
+        cached = universe._read_threshold_cache("us")
+    assert items == [("YHOO", "动态池")] and source == "yahoo"
+    assert cached["provider"] == "yahoo"
 
 
 # ---------------- 信号提取 ----------------
