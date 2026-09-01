@@ -13,10 +13,17 @@
 """
 from __future__ import annotations
 
+import importlib
 from typing import Callable
 
 INDICATORS: dict[str, Callable] = {}
 RECIPES: dict[str, Callable] = {}
+
+
+def _ensure_builtin_indicators() -> None:
+    """Load built-ins lazily so the registry works as a direct entry point."""
+    if not INDICATORS:
+        importlib.import_module("gcn.core.indicators")
 
 
 def register_indicator(name: str):
@@ -36,8 +43,14 @@ def register_recipe(name: str):
 
 
 def get_indicator(name: str) -> Callable:
+    _ensure_builtin_indicators()
     return INDICATORS[name]
 
 
 def list_indicators() -> list[str]:
+    _ensure_builtin_indicators()
     return sorted(INDICATORS)
+
+
+# Direct imports expose the built-ins as well as the registration helpers.
+_ensure_builtin_indicators()

@@ -21,7 +21,8 @@ import numpy as np
 import pandas as pd
 
 from gcn.data.service import (DATA_DIR, DEFAULT_COUNT, _cache_is_fresh,
-                              _cache_path, _load_cache, fetch_quote)
+                              _cache_path, _load_cache, _atomic_write_text,
+                              fetch_quote)
 from gcn.radar.universe import RADAR_MARKETS, get_universe
 from gcn.recipes.gcn_main import compute_ehopt10
 
@@ -38,7 +39,8 @@ MARKETS = [m for m, _ in RADAR_MARKETS]
 
 # ============================ 单标的扫描 ============================
 
-def _extract_recent(res: pd.DataFrame, max_days: int = SIGNAL_HISTORY) -> list[dict]:
+def _extract_recent(res: pd.DataFrame, max_days: int = SIGNAL_HISTORY,
+                    as_of=None) -> list[dict]:
     """提取最近 max_days 根K线内的 B买/绝反 信号。
 
     返回 [{type, date, days_ago, close}], 按时间新 -> 旧。
@@ -46,15 +48,23 @@ def _extract_recent(res: pd.DataFrame, max_days: int = SIGNAL_HISTORY) -> list[d
     """
     out = []
     n = len(res)
+    reference = pd.Timestamp.now().normalize() if as_of is None else pd.Timestamp(as_of).normalize()
+    if reference.tzinfo is not None:
+        reference = reference.tz_localize(None)
     cols = {label: np.asarray(res[col], dtype=bool) for col, label in SIGNAL_DEFS
             if col in res.columns}
     for i in range(max(0, n - max_days), n):
         for label, col in cols.items():
             if col[i]:
+                signal_day = pd.Timestamp(res.index[i])
+                if signal_day.tzinfo is not None:
+                    signal_day = signal_day.tz_localize(None)
+                calendar_age = max(0, int(np.busday_count(
+                    signal_day.normalize().date(), reference.date())))
                 out.append({
                     "type": label,
                     "date": str(res.index[i])[:10],
-                    "days_ago": int(n - 1 - i),
+                    "days_ago": max(int(n - 1 - i), calendar_age),
                     "close": round(float(res["CLOSE"].iloc[i]), 4),
                 })
     out.sort(key=lambda s: s["days_ago"])
@@ -116,6 +126,7 @@ def scan_market(market: str, progress=None,
         "n_errors": sum(1 for r in results if r.get("error")),
         "n_hits": len(hits),
         "results": hits,
+        "failed_codes": [r["code"] for r in results if r.get("error")],
         "generated_at": time.time(),
     }
 
@@ -135,8 +146,8 @@ def load_cache(market: str) -> dict | None:
 
 def save_cache(market: str, block: dict):
     DATA_DIR.mkdir(exist_ok=True)
-    _result_cache_path(market).write_text(
-        json.dumps(block, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_text(_result_cache_path(market),
+                       json.dumps(block, ensure_ascii=False))
 
 
 class RadarService:
@@ -182,6 +193,33 @@ class RadarService:
 
         try:
             block = scan_market(market, progress=progress)
+            if block.get("n_scanned", 0) <= 0 \
+                    or block.get("n_errors", 0) >= block.get("n_scanned", 0):
+                raise RuntimeError("全市场扫描无成功结果，保留上一版缓存")
+            previous = load_cache(market)
+            failed = set(block.get("failed_codes") or [])
+            current_codes = {item.get("code") for item in block.get("results", [])}
+            if previous and failed:
+                today = pd.Timestamp.now().normalize().date()
+                for old in previous.get("results", []):
+                    if old.get("code") not in failed or old.get("code") in current_codes:
+                        continue
+                    kept = dict(old)
+                    kept["stale"] = True
+                    kept["stale_reason"] = "本轮刷新失败，保留上一版命中"
+                    kept["signals"] = [dict(sig) for sig in old.get("signals", [])]
+                    for sig in kept["signals"]:
+                        try:
+                            age = int(np.busday_count(
+                                pd.Timestamp(sig["date"]).date(), today))
+                            sig["days_ago"] = max(int(sig.get("days_ago", 0)), age)
+                        except Exception:  # noqa: BLE001 - 保留无法解析的旧展示字段
+                            pass
+                    block["results"].append(kept)
+            block["n_hits"] = len(block.get("results", []))
+            block["results"].sort(key=lambda r: (
+                min((s.get("days_ago", 10**9) for s in r.get("signals", [])),
+                    default=10**9), r.get("code", "")))
             save_cache(market, block)
             with self._mu:
                 self.jobs[market] = {
@@ -241,7 +279,7 @@ def _kline_cache_fresh(symbol: str) -> bool:
         return False
     cached = _load_cache(symbol, "1d")
     return (cached is not None and not cached.empty
-            and _cache_is_fresh(cached, "1d", path))
+            and _cache_is_fresh(cached, "1d", path, symbol=symbol))
 
 
 def warm_market(market: str, force: bool = False,
@@ -265,7 +303,9 @@ def warm_market(market: str, force: bool = False,
     def _refresh(item):
         code, _ = item
         try:
-            fetch_quote(code, "1d", DEFAULT_COUNT, force=force)
+            result = fetch_quote(code, "1d", DEFAULT_COUNT, force=force)
+            if isinstance(result, dict) and result.get("refresh_failed"):
+                raise RuntimeError(result.get("note") or "在线刷新失败")
             _warm_fails.pop(code, None)
             return True
         except Exception:  # noqa: BLE001 - 单只失败记账退避, 不阻断

@@ -3,8 +3,9 @@
 import numpy as np
 import pandas as pd
 
-from gcn.core.tdx import (BACKSET, BARSLAST, BARSLASTCOUNT, CROSS, EMA, MA,
-                          REF, SMA, STDP, STD, BETWEEN)
+from gcn.core.tdx import (AND, OR_, BACKSET, BARSLAST, BARSLASTCOUNT, BETWEEN,
+                          COUNT, CROSS, EMA, IF, MAXA, POW_, REF, SMA, STDP,
+                          STD, MA, _as_bool, safe_div)
 
 
 def _ref_sma(x, n, m):
@@ -71,6 +72,67 @@ def test_ma_ema_stdp_std_ref():
     assert np.allclose(STDP(x, 20).dropna(), x.rolling(20).std(ddof=0).dropna())
     assert np.allclose(STD(x, 20).dropna(), x.rolling(20).std(ddof=1).dropna())
     assert np.allclose(REF(x, 3).dropna(), x.shift(3).dropna())
+
+
+def test_ema_preserves_internal_nan_and_resumes_from_last_value():
+    x = pd.Series([1.0, np.nan, 3.0])
+    got = EMA(x, 3)
+    assert got.iloc[0] == 1.0
+    assert np.isnan(got.iloc[1])
+    assert got.iloc[2] == 2.0
+
+
+def test_scalar_series_broadcasting_is_bidirectional():
+    idx = pd.Index(["a", "b", "c"])
+    values = pd.Series([1.0, 2.0, 4.0], index=idx)
+    assert safe_div(8.0, values).tolist() == [8.0, 4.0, 2.0]
+    assert MAXA(2.0, values).tolist() == [2.0, 2.0, 4.0]
+    assert POW_(2.0, values).tolist() == [2.0, 4.0, 16.0]
+    assert POW_(2.0, 3.0).tolist() == [8.0]
+    assert BETWEEN(2.0, values, 3.0).tolist() == [True, True, False]
+
+    crossed = CROSS(2.0, pd.Series([3.0, 1.0, 3.0], index=idx))
+    assert crossed.tolist() == [False, True, False]
+    assert list(crossed.index) == list(idx)
+
+    numerator = pd.Series([8.0, 6.0], index=["b", "a"])
+    denominator = pd.Series([2.0, 4.0], index=["a", "c"])
+    aligned = safe_div(numerator, denominator)
+    assert list(aligned.index) == ["b", "a", "c"]
+    assert np.isnan(aligned.loc["b"])
+    assert aligned.loc["a"] == 3.0
+    assert np.isnan(aligned.loc["c"])
+
+
+def test_conditional_and_boolean_ops_align_indexes():
+    idx = pd.Index(["x", "y"])
+    values = pd.Series([10.0, 20.0], index=idx)
+    assert IF(True, values, 0.0).equals(values)
+    assert IF(False, 0.0, values).equals(values)
+    assert _as_bool(float("nan")).tolist() == [False]
+    assert _as_bool(pd.Series([0.0, 2.0, np.nan])).tolist() == [False, True, False]
+
+    left = pd.Series([True], index=["x"])
+    right = pd.Series([True], index=["y"])
+    got_and = AND(left, right)
+    got_or = OR_(left, right)
+    assert got_and.to_dict() == {"x": False, "y": False}
+    assert got_or.to_dict() == {"x": True, "y": True}
+    assert AND(pd.Series([True, False], index=idx), True).tolist() == [True, False]
+    assert OR_(pd.Series([True, False], index=idx), False).tolist() == [True, False]
+
+
+def test_ref_scalar_has_one_invalid_observation():
+    got = REF(5.0, 1)
+    assert len(got) == 1
+    assert np.isnan(got.iloc[0])
+
+
+def test_count_nonpositive_period_is_cumulative():
+    cond = pd.Series([True, False, True, True])
+    want = [1.0, 1.0, 2.0, 3.0]
+    assert COUNT(cond, 0).tolist() == want
+    assert COUNT(cond, -3).tolist() == want
 
 
 def test_cross_between():

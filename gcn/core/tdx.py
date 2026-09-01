@@ -22,6 +22,19 @@ import math
 import numpy as np
 import pandas as pd
 
+
+def _common_index(*values) -> pd.Index:
+    """Return a stable outer index for element-wise operands."""
+    indexes = [value.index for value in values if isinstance(value, pd.Series)]
+    if not indexes:
+        return pd.RangeIndex(1)
+    index = indexes[0]
+    for other in indexes[1:]:
+        if not index.equals(other):
+            index = index.union(other, sort=False)
+    return index
+
+
 def _as_series(x, index=None) -> pd.Series:
     """转为 float Series (标量自动广播)。"""
     if isinstance(x, pd.Series):
@@ -29,21 +42,28 @@ def _as_series(x, index=None) -> pd.Series:
             x = x.reindex(index)
         return x.astype(float)
     if index is None:
-        raise ValueError("标量入参需要提供 index")
+        index = pd.RangeIndex(1)
     return pd.Series(float(x), index=index)
 
 
-def _as_bool(x) -> pd.Series:
+def _as_bool(x, index=None) -> pd.Series:
     """转为 bool Series; NaN 视为 False (对应 TDX 无效值参与逻辑运算)。"""
     if isinstance(x, pd.Series):
-        return x.fillna(False).astype(bool)
-    return pd.Series(bool(x), index=None)
+        if index is not None and not x.index.equals(index):
+            x = x.reindex(index)
+        values = [False if pd.isna(value) else bool(value) for value in x.to_numpy()]
+        return pd.Series(values, index=x.index, dtype=bool)
+    value = False if pd.isna(x) else bool(x)
+    if index is None:
+        index = pd.RangeIndex(1)
+    return pd.Series(value, index=index, dtype=bool)
 
 
 def safe_div(a, b) -> pd.Series:
     """除法: 分母为 0 时返回 NaN (对应 TDX 运算无效值), 而不是 inf。"""
-    a = _as_series(a) if not isinstance(a, pd.Series) else a.astype(float)
-    b = _as_series(b, a.index) if not isinstance(b, pd.Series) else b.astype(float).reindex(a.index)
+    index = _common_index(a, b)
+    a = _as_series(a, index)
+    b = _as_series(b, index)
     with np.errstate(divide="ignore", invalid="ignore"):
         r = a / b
     return r.replace([np.inf, -np.inf], np.nan)
@@ -56,14 +76,27 @@ def MA(x, n) -> pd.Series:
 
 
 def EMA(x, n) -> pd.Series:
-    """指数移动平均: Y = (2*X + (N-1)*Y') / (N+1), 从首个有效值起算。"""
+    """指数移动平均；从首个有效值起算，内部 NaN 原位保留且不推进递归。"""
     x = _as_series(x)
-    return x.ewm(span=int(n), adjust=False).mean()
+    k = int(n)
+    if k <= 0:
+        raise ValueError("EMA period must be positive")
+    alpha = 2.0 / (k + 1.0)
+    values = x.to_numpy(dtype=float)
+    out = np.full(len(values), np.nan)
+    last = np.nan
+    for i, value in enumerate(values):
+        if np.isnan(value):
+            continue
+        last = value if np.isnan(last) else alpha * value + (1.0 - alpha) * last
+        out[i] = last
+    return pd.Series(out, index=x.index)
 
 
 def SMA(x, n, m) -> pd.Series:
     """TDX 平滑移动平均: Y = (X*M + Y'*(N-M)) / N, 首个有效值处 Y=X。"""
-    a = _as_series(x).to_numpy(dtype=float)
+    x = _as_series(x)
+    a = x.to_numpy(dtype=float)
     y = np.full(len(a), np.nan)
     n, m = float(n), float(m)
     last = np.nan
@@ -76,7 +109,7 @@ def SMA(x, n, m) -> pd.Series:
         else:
             y[i] = (m * xv + (n - m) * last) / n
         last = y[i]
-    return pd.Series(y, index=_as_series(x).index)
+    return pd.Series(y, index=x.index)
 
 
 def HHV(x, n) -> pd.Series:
@@ -113,57 +146,51 @@ def STD(x, n) -> pd.Series:
 
 def REF(x, n) -> pd.Series:
     """向前引用: N 个周期前的值。"""
-    x = _as_series(x) if isinstance(x, pd.Series) else _as_series(x, _REF_DEFAULT_INDEX)
-    return x.shift(int(n))
-
-
-# REF 在纯标量场景下的占位索引 (实际公式中均为序列运算, 不会用到)
-_REF_DEFAULT_INDEX = pd.RangeIndex(0)
+    return _as_series(x).shift(int(n))
 
 
 def MAXA(a, b) -> pd.Series:
     """逐元素最大值 (对应 TDX MAX); 任一入参无效则结果无效。"""
-    a = a if isinstance(a, pd.Series) else _as_series(a)
-    b = b if isinstance(b, pd.Series) else _as_series(b, a.index)
+    index = _common_index(a, b)
+    a = _as_series(a, index)
+    b = _as_series(b, index)
     pair = pd.concat([a, b], axis=1)
     return pair.max(axis=1).where(pair.notna().all(axis=1))
 
 
 def ABS_(x) -> pd.Series:
-    return x.abs() if isinstance(x, pd.Series) else abs(x)
+    return _as_series(x).abs()
 
 
 def POW_(x, p) -> pd.Series:
-    x = x if isinstance(x, pd.Series) else _as_series(x)
-    return x.pow(float(p))
+    index = _common_index(x, p)
+    return _as_series(x, index).pow(_as_series(p, index))
 
 
 def IF(cond, a, b) -> pd.Series:
     """条件赋值: cond 为真取 a, 否则取 b (无效条件视为假)。"""
-    cond = _as_bool(cond)
-    idx = cond.index
-    a_arr = a.to_numpy(dtype=float) if isinstance(a, pd.Series) else np.full(len(idx), float(a))
-    b_arr = b.to_numpy(dtype=float) if isinstance(b, pd.Series) else np.full(len(idx), float(b))
-    if isinstance(a, pd.Series) and not a.index.equals(idx):
-        a_arr = a.reindex(idx).to_numpy(dtype=float)
-    if isinstance(b, pd.Series) and not b.index.equals(idx):
-        b_arr = b.reindex(idx).to_numpy(dtype=float)
-    return pd.Series(np.where(cond.to_numpy(), a_arr, b_arr), index=idx)
+    index = _common_index(cond, a, b)
+    cond = _as_bool(cond, index)
+    a = _as_series(a, index)
+    b = _as_series(b, index)
+    return pd.Series(np.where(cond.to_numpy(), a.to_numpy(), b.to_numpy()), index=index)
 
 
 def CROSS(a, b) -> pd.Series:
     """上穿: A>B 且 前一周期 A<=B。"""
-    a = a if isinstance(a, pd.Series) else _as_series(a)
-    b = b if isinstance(b, pd.Series) else _as_series(b, a.index)
+    index = _common_index(a, b)
+    a = _as_series(a, index)
+    b = _as_series(b, index)
     prev_a, prev_b = a.shift(1), b.shift(1)
     return (a > b) & (prev_a <= prev_b)
 
 
 def BETWEEN(a, b, c) -> pd.Series:
     """A 介于 B 和 C 之间 (闭区间, 不分大小端)。"""
-    a = a if isinstance(a, pd.Series) else _as_series(a)
-    b = b if isinstance(b, pd.Series) else _as_series(b, a.index)
-    c = c if isinstance(c, pd.Series) else _as_series(c, a.index)
+    index = _common_index(a, b, c)
+    a = _as_series(a, index)
+    b = _as_series(b, index)
+    c = _as_series(c, index)
     return ((a >= b) & (a <= c)) | ((a >= c) & (a <= b))
 
 
@@ -199,7 +226,10 @@ def BARSLASTCOUNT(cond) -> pd.Series:
 def COUNT(cond, n) -> pd.Series:
     """最近 N 周期内条件成立的次数 (起始不足 N 按已有数据统计)。"""
     b = _as_bool(cond).astype(float)
-    return b.rolling(int(n), min_periods=1).sum()
+    k = int(n)
+    if k <= 0:  # TDX: N=0 表示从第一根有效数据累计
+        return b.expanding(min_periods=1).sum()
+    return b.rolling(k, min_periods=1).sum()
 
 
 def BACKSET(cond, n) -> pd.Series:
@@ -235,11 +265,13 @@ def ISLASTBAR(index) -> pd.Series:
 
 
 def AND(a, b):
-    return _as_bool(a) & _as_bool(b)
+    index = _common_index(a, b)
+    return _as_bool(a, index) & _as_bool(b, index)
 
 
 def OR_(a, b):
-    return _as_bool(a) | _as_bool(b)
+    index = _common_index(a, b)
+    return _as_bool(a, index) | _as_bool(b, index)
 
 
 def NOT(a):

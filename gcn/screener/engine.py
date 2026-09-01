@@ -38,7 +38,8 @@ def _eval_condition(cond: dict, m: dict) -> dict:
         if covered == 0:
             return {"text": cond["text"], "value": None, "threshold": val,
                     "passed": False, "note": f"无数据"}
-        ok_years = sum(1 for v in series if v > val)
+        compare = (lambda v: v > val) if op == "yearly_gt" else (lambda v: v < val)
+        ok_years = sum(1 for v in series if compare(v))
         # 数据不足: 按可得年份全部满足评估, 但标注覆盖不足
         passed = (ok_years == covered) and covered >= min(need, covered)
         if covered < need:
@@ -72,19 +73,25 @@ def evaluate_symbol(symbol: str, strategy_id: str, count: int = 1300) -> dict:
     try:
         m = fundamentals.compute_metrics(ysym, count=count)
     except Exception as e:  # noqa: BLE001
-        return {"symbol": symbol, "yahoo": ysym, "passed": False,
+        n_total = sum(1 for c in strat["conditions"]
+                      if c.get("field") != "market_cap_cny") + 1
+        return {"symbol": symbol, "yahoo": ysym, "name": symbol,
+                "market_cap_cny": None, "passed": False,
+                "n_ok": 0, "n_total": n_total,
                 "note": f"基本面获取失败: {e}", "conditions": []}
 
     fx = FX_TO_CNY.get(str(m.get("currency_code") or m.get("currency") or "USD").upper(), 1.0)
     mc = m.get("market_cap")
     mc_cny = mc * fx if mc else None
+    m["market_cap_cny"] = mc_cny
 
     # 全局市值过滤
     floor = max(GLOBAL_MIN_MKTCAP_CNY, strat.get("min_mktcap_cny", 0))
     mcap_pass = mc_cny is not None and mc_cny > floor
     mcap_note = "" if mc_cny else "市值数据缺失"
 
-    conds = [_eval_condition(c, m) for c in strat["conditions"]]
+    conds = [_eval_condition(c, m) for c in strat["conditions"]
+             if c.get("field") != "market_cap_cny"]
     conds.append({"text": f"总市值 > {floor / 1e8:.0f} 亿元", "value": mc_cny,
                   "threshold": floor, "passed": mcap_pass, "note": mcap_note})
     all_pass = all(c["passed"] for c in conds)

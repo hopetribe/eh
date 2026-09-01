@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """选股模块离线测试: 条件求值 / 市值过滤 / 策略定义完整性 (无网络)。"""
-from gcn.screener.engine import _eval_condition, GLOBAL_MIN_MKTCAP_CNY
+from gcn.screener.engine import (_eval_condition, GLOBAL_MIN_MKTCAP_CNY,
+                                 evaluate_symbol)
 from gcn.screener.strategies import STRATEGIES, get_strategy
 
 
@@ -39,6 +40,92 @@ def test_condition_eval_yearly_window():
     assert r3["passed"] and "数据不足" in r3["note"]
 
 
+def test_condition_eval_yearly_lt_uses_less_than():
+    cond = {"text": "t", "field": "debt", "op": "yearly_lt", "value": 0.2, "need": 2}
+    assert _eval_condition(cond, {"debt": [0.10, 0.15]})["passed"]
+    assert not _eval_condition(cond, {"debt": [0.10, 0.25]})["passed"]
+
+
 def test_global_mktcap_floor():
     assert GLOBAL_MIN_MKTCAP_CNY == 50e8
     assert STRATEGIES["growth"]["min_mktcap_cny"] == 100e8
+
+
+def test_neff_market_cap_condition_receives_converted_value():
+    import gcn.screener.engine as engine
+    old = engine.fundamentals.compute_metrics
+    metrics = {"currency": "USD", "market_cap": 2e9, "name": "Apple",
+               "trr": 2, "trailing_pe": 10, "eps_growth": 0.1,
+               "static_div_yield": 0.04, "roe_avg_3y": 0.2,
+               "fcf_to_net_income": 1, "div_yield_yearly": [0.02] * 5}
+    try:
+        engine.fundamentals.compute_metrics = lambda *a, **k: metrics.copy()
+        result = evaluate_symbol("AAPL", "neff")
+    finally:
+        engine.fundamentals.compute_metrics = old
+    caps = [c for c in result["conditions"] if c["text"] == "总市值 > 100 亿元"]
+    assert len(caps) == 1
+    cap = caps[0]
+    assert cap["passed"] and cap["note"] == ""
+
+
+def test_evaluate_symbol_failure_has_stable_result_shape():
+    import gcn.screener.engine as engine
+    old = engine.fundamentals.compute_metrics
+    try:
+        engine.fundamentals.compute_metrics = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("offline"))
+        result = evaluate_symbol("AAPL", "graham")
+    finally:
+        engine.fundamentals.compute_metrics = old
+    assert result["name"] == "AAPL" and result["market_cap_cny"] is None
+    assert result["n_ok"] == 0 and result["n_total"] == 8
+
+
+def test_gross_margin_history_uses_gross_profit_not_cost_of_sales():
+    import pandas as pd
+    from gcn.screener.fundamentals import _gross_margin_history
+    years = pd.to_datetime(["2025-12-31", "2024-12-31", "2023-12-31"])
+    revenue = pd.Series([100, 90, 80], index=years)
+    gross_profit = pd.Series([60, 50, 40], index=years)
+    assert _gross_margin_history(revenue, gross_profit, 3) == [0.6, 50 / 90, 0.5]
+
+
+def test_dividend_yields_exclude_incomplete_current_year():
+    import pandas as pd
+    from gcn.screener.fundamentals import _completed_dividend_yields
+    idx = pd.to_datetime(["2024-12-31", "2025-12-31", "2026-08-28"])
+    prices = pd.DataFrame({"close": [100.0, 100.0, 100.0]}, index=idx)
+    dividends = pd.Series([2.0, 3.0, 10.0], index=idx)
+    assert _completed_dividend_yields(
+        dividends, prices, as_of=pd.Timestamp("2026-08-31")) == [0.03, 0.02]
+
+
+def test_sales_inventory_spread_requires_both_matching_years():
+    import math
+    import pandas as pd
+    from gcn.screener.fundamentals import _sales_inventory_growth_spread
+    years = pd.to_datetime(["2025-12-31", "2024-12-31"])
+    revenue = pd.Series([120.0, 100.0], index=years)
+    missing_latest_inventory = pd.Series([50.0], index=[years[1]])
+    assert math.isnan(_sales_inventory_growth_spread(revenue, missing_latest_inventory))
+    inventory = pd.Series([55.0, 50.0], index=years)
+    assert abs(_sales_inventory_growth_spread(revenue, inventory) - 0.1) < 1e-12
+
+
+def test_davis_multiplier_uses_same_period_annual_prices():
+    import pandas as pd
+    from gcn.screener.fundamentals import _davis_double_play
+    px = pd.DataFrame({"close": [100.0, 100.0, 120.0]}, index=pd.to_datetime(
+        ["2024-12-31", "2025-12-31", "2026-08-31"]))
+    eps = pd.Series([4.0, 2.0], index=pd.to_datetime(["2025-12-31", "2024-12-31"]))
+    assert _davis_double_play(px, eps) == 1.0
+
+
+def test_historical_pe_percentile_uses_period_eps_not_latest_eps_constant():
+    import pandas as pd
+    from gcn.screener.fundamentals import _historical_pe_percentile
+    years = pd.to_datetime([f"{y}-12-31" for y in range(2021, 2026)])
+    px = pd.DataFrame({"close": [10, 20, 30, 40, 50]}, index=years)
+    eps = pd.Series([10, 2, 3, 4, 1], index=years[::-1])  # descending report order
+    assert _historical_pe_percentile(px, eps, current_pe=5.0) == 0.0

@@ -15,7 +15,7 @@ import json
 import time
 from pathlib import Path
 
-from gcn.data.service import DATA_DIR, _opend_reachable
+from gcn.data.service import DATA_DIR, _atomic_write_text, _opend_reachable
 
 # 动态股票池缓存: data/radar_universe_<market>.json, 当日有效
 
@@ -161,31 +161,37 @@ def _fetch_futu_top(market: str, n: int = 100) -> list[tuple[str, str]] | None:
                 flt.stock_field = StockField.MARKET_VAL
                 flt.is_no_filter = True
                 flt.sort = SortDir.DESCEND
-                ret, data, _ = ctx.get_stock_filter(fmkt, filter_list=[flt],
-                                                    begin=0, num=n)
-                if ret != 0 or data is None or data.empty:
-                    continue
-                cols = {c.lower(): c for c in data.columns}
-                ccol = next((cols[c] for c in cols if "code" in c), None)
-                ncol = next((cols[c] for c in cols if "name" in c), None)
-                vcol = next((cols[c] for c in cols if "market_val" in c
-                             or "market_cap" in c), None)
-                if ccol is None:
-                    continue
-                for rec in data.to_dict("records"):
-                    code = str(rec.get(ccol, "")).split(".")[-1].strip()
-                    name = str(rec.get(ncol, "")) if ncol else ""
-                    val = float(rec.get(vcol) or 0.0) if vcol else 0.0
-                    if code:
-                        rows.append((val, code, name))
+                begin = 0
+                while begin < n:
+                    ret, payload = ctx.get_stock_filter(
+                        fmkt, filter_list=[flt], begin=begin, num=min(200, n - begin))
+                    if ret != 0 or not isinstance(payload, tuple) or len(payload) != 3:
+                        break
+                    last_page, all_count, data = payload
+                    if not data:
+                        break
+                    for rec in data:
+                        code = str(getattr(rec, "stock_code", "")).split(".")[-1].strip()
+                        name = str(getattr(rec, "stock_name", "") or "")
+                        val = float(getattr(rec, "market_val", 0.0) or 0.0)
+                        if code:
+                            rows.append((val, code, name))
+                    begin += len(data)
+                    if last_page or begin >= int(all_count or 0):
+                        break
         finally:
             ctx.close()
     except Exception:  # noqa: BLE001 - Futu 不可用/权限不足时静默降级
         return None
     if not rows:
         return None
-    rows.sort(key=lambda x: -x[0])
-    return [(code, name) for _, code, name in rows[:n]]
+    best: dict[str, tuple[float, str]] = {}
+    for value, code, name in rows:
+        if code not in best or value > best[code][0]:
+            best[code] = (value, name)
+    ranked = sorted(((value, code, name) for code, (value, name) in best.items()),
+                    key=lambda item: (-item[0], item[1]))
+    return [(code, name) for _, code, name in ranked[:n]]
 
 
 def get_universe(market: str, n: int = 100, use_cache: bool = True) -> tuple[list[tuple[str, str]], str]:
@@ -206,9 +212,8 @@ def get_universe(market: str, n: int = 100, use_cache: bool = True) -> tuple[lis
     dyn = _fetch_futu_top(market, n=n) if _opend_reachable() else None
     if dyn:
         DATA_DIR.mkdir(exist_ok=True)
-        cpath.write_text(json.dumps(
-            {"day": time.strftime("%Y-%m-%d"), "list": dyn}, ensure_ascii=False),
-            encoding="utf-8")
+        _atomic_write_text(cpath, json.dumps(
+            {"day": time.strftime("%Y-%m-%d"), "list": dyn}, ensure_ascii=False))
         return dyn, "futu"
 
     return _static_universe(market)[:n], "static"

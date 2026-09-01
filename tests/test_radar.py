@@ -5,8 +5,10 @@
 """
 import tempfile
 import time
+import sys
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 
@@ -42,6 +44,36 @@ def test_universe_lists_wellformed():
                 assert c.replace("-", "").isalnum(), c
 
 
+def test_futu_universe_contract_and_cross_market_deduplication():
+    import gcn.radar.universe as universe
+    class SimpleFilter: pass
+    class Context:
+        def __init__(self, **kwargs): pass
+        def get_stock_filter(self, market, **kwargs):
+            if market == "SH":
+                rows = [SimpleNamespace(stock_code="SH.600519", stock_name="茅台", market_val=100),
+                        SimpleNamespace(stock_code="SZ.000001", stock_name="平安", market_val=80)]
+            else:
+                rows = [SimpleNamespace(stock_code="SH.600519", stock_name="茅台", market_val=110),
+                        SimpleNamespace(stock_code="SZ.000333", stock_name="美的", market_val=90)]
+            return 0, (True, len(rows), rows)
+        def close(self): pass
+    fake_futu = SimpleNamespace(OpenQuoteContext=Context, SimpleFilter=SimpleFilter,
+                                SortDir=SimpleNamespace(DESCEND="desc"))
+    fake_constant = SimpleNamespace(StockField=SimpleNamespace(MARKET_VAL="market_val"))
+    old_futu, old_const = sys.modules.get("futu"), sys.modules.get("futu.common.constant")
+    try:
+        sys.modules["futu"] = fake_futu
+        sys.modules["futu.common.constant"] = fake_constant
+        out = universe._fetch_futu_top("cn", n=3)
+    finally:
+        if old_futu is None: sys.modules.pop("futu", None)
+        else: sys.modules["futu"] = old_futu
+        if old_const is None: sys.modules.pop("futu.common.constant", None)
+        else: sys.modules["futu.common.constant"] = old_const
+    assert out == [("600519", "茅台"), ("000333", "美的"), ("000001", "平安")]
+
+
 # ---------------- 信号提取 ----------------
 
 def _make_res(n=30, b_at=(), jf_at=()):
@@ -57,13 +89,13 @@ def _make_res(n=30, b_at=(), jf_at=()):
 
 def test_extract_recent_windows():
     res = _make_res(30, b_at=(2, 20), jf_at=(7,))
-    sigs = engine._extract_recent(res, max_days=15)
+    sigs = engine._extract_recent(res, max_days=15, as_of=res.index[-1])
     # days_ago=20 的 B买 超出窗口, 不应出现; 按新 -> 旧 (days_ago 升序)
     assert [(s["type"], s["days_ago"]) for s in sigs] == [("B买", 2), ("绝反", 7)]
     assert sigs[1]["date"] == str(res.index[22])[:10]
     assert sigs[1]["close"] == 12.2
     # 近一周 (5 根K线) 只剩 B买
-    week = engine._extract_recent(res, max_days=5)
+    week = engine._extract_recent(res, max_days=5, as_of=res.index[-1])
     assert [(s["type"], s["days_ago"]) for s in week] == [("B买", 2)]
 
 
@@ -71,6 +103,12 @@ def test_extract_recent_empty():
     res = _make_res(30)
     assert engine._extract_recent(res, max_days=15) == []
     assert engine._extract_recent(res.iloc[:0]) == []
+
+
+def test_extract_recent_age_is_relative_to_today_not_last_cached_bar():
+    res = _make_res(5, b_at=(0,))
+    sig = engine._extract_recent(res, as_of=pd.Timestamp("2026-08-31"))[0]
+    assert sig["days_ago"] > 200
 
 
 # ---------------- 单标的扫描 ----------------
@@ -92,7 +130,7 @@ def _fake_compute(df, **kw):
 
 
 def _synthetic_rows(n=30):
-    idx = pd.bdate_range("2025-08-01", periods=n)
+    idx = pd.bdate_range(end=pd.Timestamp.now().normalize(), periods=n)
     return [[t.strftime("%Y-%m-%d"), 10, 11, 9, 10 + i * 0.1, 1000]
             for i, t in enumerate(idx)]
 
@@ -204,6 +242,46 @@ def test_service_snapshot_error_kept():
         assert snap["markets"]["hk"]["job"]["status"] == "error"
 
 
+def test_service_all_symbol_failures_preserve_previous_cache():
+    def all_failed(market, progress=None, max_workers=6):
+        return {"market": market, "universe_source": "static", "n_scanned": 3,
+                "n_errors": 3, "n_hits": 0, "results": [],
+                "generated_at": time.time()}
+    old_block = {"market": "us", "n_scanned": 3, "n_errors": 0, "n_hits": 1,
+                 "results": [{"code": "OLD"}], "generated_at": time.time() - 999}
+    with tempfile.TemporaryDirectory() as tmp, \
+         _patched(engine, "DATA_DIR", Path(tmp)), \
+         _patched(engine, "scan_market", all_failed):
+        engine.save_cache("us", old_block)
+        svc = engine.RadarService()
+        svc.start_scan(["us"])
+        job = _wait_job(svc, "us")
+        assert job["status"] == "error"
+        assert engine.load_cache("us")["results"][0]["code"] == "OLD"
+
+
+def test_service_partial_failures_keep_failed_symbols_previous_hits():
+    def partial(market, progress=None, max_workers=6):
+        return {"market": market, "universe_source": "static", "n_scanned": 2,
+                "n_errors": 1, "n_hits": 1,
+                "results": [{"code": "A", "signals": [{"days_ago": 0}]}],
+                "failed_codes": ["B"], "generated_at": time.time()}
+    old = {"market": "us", "n_scanned": 2, "n_errors": 0, "n_hits": 2,
+           "results": [{"code": "A", "signals": [{"days_ago": 2}]},
+                       {"code": "B", "signals": [{"days_ago": 3}]}],
+           "generated_at": time.time() - 100}
+    with tempfile.TemporaryDirectory() as tmp, \
+         _patched(engine, "DATA_DIR", Path(tmp)), \
+         _patched(engine, "scan_market", partial):
+        engine.save_cache("us", old)
+        svc = engine.RadarService()
+        svc.start_scan(["us"])
+        assert _wait_job(svc, "us")["status"] == "done"
+        cached = engine.load_cache("us")
+        assert [r["code"] for r in cached["results"]] == ["A", "B"]
+        assert cached["results"][1]["stale"] is True
+
+
 # ---------------- 日K预热守护 ----------------
 
 def test_warm_market_only_refreshes_stale():
@@ -229,6 +307,37 @@ def test_warm_market_only_refreshes_stale():
 
 def test_warm_failure_backoff_and_force():
     """失败标的退避期内跳过, 退避到期/force 时重试。"""
+    engine._warm_fails.clear()
+
+
+def test_warm_stale_cache_fallback_counts_as_refresh_failure():
+    engine._warm_fails.clear()
+
+
+def test_kline_freshness_uses_symbol_market_calendar():
+    seen = {}
+    frame = pd.DataFrame({"close": [1]}, index=pd.to_datetime(["2026-01-01"]))
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "600519_1d.csv"
+        path.touch()
+        with _patched(engine, "_cache_path", lambda *a: path), \
+         _patched(engine, "_load_cache", lambda *a: frame), \
+         _patched(engine, "_cache_is_fresh",
+                  lambda *a, **k: seen.setdefault("symbol", k.get("symbol")) == "600519"):
+            assert engine._kline_cache_fresh("600519")
+    assert seen["symbol"] == "600519"
+    universe = [("STALE", "旧缓存")]
+    calls = {"n": 0}
+    def stale_result(*args, **kwargs):
+        calls["n"] += 1
+        return {"source": "cache", "stale": True, "refresh_failed": True, "rows": [[1]]}
+    with _patched(engine, "get_universe", lambda *a, **k: (universe, "static")), \
+         _patched(engine, "_kline_cache_fresh", lambda c: False), \
+         _patched(engine, "fetch_quote", stale_result):
+        first = engine.warm_market("us")
+        second = engine.warm_market("us")
+    assert first["n_failed"] == 1 and second["n_targets"] == 0
+    assert calls["n"] == 1
     engine._warm_fails.clear()
     universe = [("BAD", "丁")]
     calls = {"n": 0}

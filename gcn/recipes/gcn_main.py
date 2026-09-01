@@ -23,8 +23,8 @@ import numpy as np
 import pandas as pd
 
 from gcn.core.tdx import (
-    BARSLAST, BARSLASTCOUNT, BACKSET, BETWEEN, COUNT, CROSS, EMA, HHV, IF,
-    ISLASTBAR, LLV, MA, MAXA, POW_, REF, SMA, STDP, STD, safe_div,
+    BARSLAST, BARSLASTCOUNT, BETWEEN, COUNT, CROSS, EMA, HHV, IF,
+    LLV, MA, MAXA, POW_, REF, SMA, STDP, STD, safe_div,
 )
 
 # B_SCORE_1 的获利筹低位门槛 (原公式 8; 放宽可提升低点覆盖率, 见回测诊断)
@@ -71,6 +71,12 @@ def compute_ehopt10(df: pd.DataFrame,
       NINE2_DOWN_COUNT/NINE2_DOWN_LABEL/NINE2_DOWN_9 下九转计数与标注
       ICON_JUEFAN                  DRAWICON(绝反...,LOW,34)
     """
+    if version not in VERSIONS:
+        raise ValueError(f"未知配方版本: {version!r}，仅支持 {', '.join(VERSIONS)}")
+    if isinstance(N, (bool, np.bool_)) or not np.isfinite(N) or int(N) != N or int(N) <= 0:
+        raise ValueError("N 必须是正整数")
+    N = int(N)
+
     data = _load_ohlcv(df)
     OPEN, HIGH, LOW, CLOSE, VOLA = (data[k] for k in ["open", "high", "low", "close", "volume"])
     idx = data.index
@@ -285,23 +291,16 @@ def compute_ehopt10(df: pd.DataFrame,
     NINE2_BUY_SIGNAL = NINE2_SIGNAL_DOWN & NINE2_VOL_CONFIRM_DOWN & NINE2_MACD_CROSS_UP & NINE2_FILTER_TREND
     NINE2_SELL_SIGNAL = NINE2_SIGNAL_UP & NINE2_VOL_CONFIRM_UP & NINE2_MACD_CROSS_DOWN & NINE2_FILTER_TREND
 
-    # ==================== NINE2 九转 1-9 标注（按 NINE 筛选, EHOPT10）====================
-    # 仅标注: ① 已完成 9 序列的 1-9  (BACKSET(NINE2_UP_NINE>0,9))
-    #         ② 最后一根K线上进行中的 5-8 序列 (BACKSET(...LIVE..., NINE2_UP_COUNT))
+    # ==================== NINE2 九转 1-9 标注（因果显示）====================
+    # 每根 K 线只显示当时已经形成的计数；不通过 BACKSET 回填历史，避免图表后见信息。
     NINE2_UP_COUNT = BARSLASTCOUNT(NINE2_COND_UP)
-    NINE2_UP_NINE = NINE2_UP_COUNT == 9
-    NINE2_UP_LIVE = ISLASTBAR(idx) & BETWEEN(NINE2_UP_COUNT, 5, 8)
-    NINE2_UP_LABEL = (BACKSET(NINE2_UP_NINE, 9) | BACKSET(NINE2_UP_LIVE, NINE2_UP_COUNT)) \
-        * NINE2_UP_COUNT
+    NINE2_UP_LABEL = IF(BETWEEN(NINE2_UP_COUNT, 1, 8), NINE2_UP_COUNT, 0)
     # DRAWNUMBER(0<LABEL<9, H, LABEL, OFFSET) COLORFF00FF;  DRAWNUMBER(COUNT=9, H, 9) COLORGREEN
     NINE2_UP_LABEL_SHOWN = (NINE2_UP_LABEL > 0) & (NINE2_UP_LABEL < 9)
     NINE2_UP_9_SHOWN = NINE2_UP_COUNT == 9
 
     NINE2_DOWN_COUNT = BARSLASTCOUNT(NINE2_COND_DOWN)
-    NINE2_DOWN_NINE = NINE2_DOWN_COUNT == 9
-    NINE2_DOWN_LIVE = ISLASTBAR(idx) & BETWEEN(NINE2_DOWN_COUNT, 5, 8)
-    NINE2_DOWN_LABEL = (BACKSET(NINE2_DOWN_NINE, 9) | BACKSET(NINE2_DOWN_LIVE, NINE2_DOWN_COUNT)) \
-        * NINE2_DOWN_COUNT
+    NINE2_DOWN_LABEL = IF(BETWEEN(NINE2_DOWN_COUNT, 1, 8), NINE2_DOWN_COUNT, 0)
     # DRAWNUMBER(0<LABEL<9, L, LABEL, -OFFSET) COLORGREEN;  DRAWNUMBER(COUNT=9, L, 9) COLORFF00FF
     NINE2_DOWN_LABEL_SHOWN = (NINE2_DOWN_LABEL > 0) & (NINE2_DOWN_LABEL < 9)
     NINE2_DOWN_9_SHOWN = NINE2_DOWN_COUNT == 9

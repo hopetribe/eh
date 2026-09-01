@@ -117,6 +117,10 @@
   #radPanel th { background: var(--panel2); color: var(--muted); font-weight: 500; }
   #radPanel tbody tr { cursor: pointer; }
   #radPanel tbody tr:hover { background: var(--panel2); }
+  #radPanel .rad-symbol { appearance: none; border: 0; padding: 1px 4px;
+    color: var(--text); background: transparent; font: inherit; font-weight: 700;
+    cursor: pointer; }
+  #radPanel .rad-symbol:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   #radPanel td.tname { text-align: left; max-width: 200px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
   .rad-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
@@ -180,123 +184,183 @@
     background: #5c1a1a; border: 1px solid #a33; color: #ffd7d7; padding: 6px 14px;
     border-radius: 6px; font-size: 12px; display: none; max-width: 70%; }
 </style>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div id="app">
-  <aside id="side">
-    <h1>金筹九转 GCN<select id="verSel" class="ver-sel" title="切换指标版本对比 (v4=优化版)">
-      <option value="v4" selected>v4 优化版</option>
-      <option value="v3">v3</option>
-    </select></h1>
-    <div class="muted">GoldenChip NineTurn · 筹码×布林×九转 主图择时 · <span id="verNote"></span></div>
-
-    <section>
-      <div class="sec-title">数据</div>
-      <div class="quote-row">
-        <div class="sym-wrap">
-          <input id="symbol" type="text" value="TQQQ" spellcheck="false" autocomplete="off"
-                 placeholder="代码: TQQQ / AAPL / 00700 / 600519">
-          <button class="btn star" id="btnWatch" title="加入/移出关注">☆</button>
-          <div id="watchDrop" class="watch-drop" style="display:none"></div>
+  <aside id="side" tabindex="-1">
+    <header class="brand-header">
+      <div class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 2.75 20.25 7.5v9L12 21.25 3.75 16.5v-9L12 2.75Z"/><path d="m8 10 4-2.3 4 2.3v4l-4 2.3L8 14v-4Z"/></svg>
+      </div>
+      <div class="brand-copy">
+        <div class="brand-title-row">
+          <h1>金筹九转 <span>GCN</span></h1>
+          <select id="verSel" class="ver-sel" aria-label="切换指标版本" title="切换指标版本对比 (v4=优化版)">
+            <option value="v4" selected>v4 优化版</option>
+            <option value="v3">v3</option>
+          </select>
         </div>
-        <select id="interval">
-          <option value="1d" selected>日K</option>
-          <option value="1wk">周K</option>
-          <option value="60m">60分</option>
-          <option value="15m">15分</option>
-          <option value="5m">5分</option>
-        </select>
-        <button class="btn primary" id="btnLoad">加载</button>
+        <p>筹码 × 布林 × 九转的主图择时工作台</p>
       </div>
-      <div id="quoteInfo" class="muted">加载行情中…</div>
-      <div style="margin-top:6px">
-        <button class="btn" id="btnSample">示例数据</button>
-        <button class="btn" id="btnRegen">换一组示例</button>
-        <label class="btn filebtn">上传 CSV<input type="file" id="fileCsv" accept=".csv,text/csv"></label>
-      </div>
-    </section>
+    </header>
 
-    <details class="collapse" id="paramSec">
-      <summary>参数</summary>
-      <div style="margin-top:8px">
+    <div class="side-scroll" id="sideScroll">
+      <section class="side-card data-card" aria-labelledby="dataTitle">
+        <div class="section-heading" id="dataTitle">数据加载</div>
+        <div class="field-row symbol-row">
+          <div class="sym-wrap">
+            <input id="symbol" type="text" value="TQQQ" spellcheck="false" autocomplete="off"
+                   aria-label="股票代码" placeholder="TQQQ / 00700 / 600519">
+            <div id="watchDrop" class="watch-drop" hidden></div>
+          </div>
+          <button class="icon-button star" id="btnWatch" type="button" aria-label="收藏当前标的" aria-pressed="false" title="加入或移出关注">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.7 2.55 5.17 5.7.83-4.12 4.01.97 5.67L12 16.7l-5.1 2.68.97-5.67L3.75 9.7l5.7-.83L12 3.7Z"/></svg>
+          </button>
+        </div>
+        <div class="field-row load-row">
+          <label class="select-wrap">
+            <span class="sr-only">K线周期</span>
+            <select id="interval" aria-label="K线周期" title="行情周期；上传 CSV 前请先选择对应周期">
+              <option value="1d" selected>日 K</option>
+              <option value="1wk">周 K</option>
+              <option value="60m">60 分</option>
+              <option value="15m">15 分</option>
+              <option value="5m">5 分</option>
+            </select>
+          </label>
+          <button class="btn primary load-button" id="btnLoad" type="button">加载行情</button>
+        </div>
+        <div class="source-actions">
+          <button class="btn tertiary" id="btnSample" type="button">示例数据</button>
+          <button class="btn tertiary" id="btnRegen" type="button">换一组示例</button>
+          <label class="btn tertiary filebtn">
+            <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14.5v4.25A1.25 1.25 0 0 0 6.25 20h11.5A1.25 1.25 0 0 0 19 18.75V14.5"/></svg>
+            上传 CSV<input type="file" id="fileCsv" accept=".csv,text/csv">
+          </label>
+        </div>
+        <div id="quoteInfo" class="data-status" role="status"><span class="status-dot"></span><span>加载行情中…</span></div>
+      </section>
+
+      <details class="side-card collapse" id="paramSec">
+        <summary><span>策略参数</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6.5 8 3.5 3.5L13.5 8"/></svg></summary>
+        <div class="parameter-body">
       <div class="param" data-key="SD">
         <div class="row1"><span class="name">SD <small>2 ~ 120</small></span>
-          <input type="number" min="2" max="120" step="1" value="20"></div>
-        <input type="range" min="2" max="120" step="1" value="20">
+          <input type="number" aria-label="SD 数值" min="2" max="120" step="1" value="20"></div>
+        <input type="range" aria-label="SD 滑块" min="2" max="120" step="1" value="20">
         <div class="desc">布林带周期 STDP(CLOSE, SD)</div>
       </div>
       <div class="param" data-key="WIDTH">
         <div class="row1"><span class="name">WIDTH <small>0 ~ 100</small></span>
-          <input type="number" min="0" max="100" step="0.5" value="2"></div>
-        <input type="range" min="0" max="100" step="0.5" value="2">
+          <input type="number" aria-label="WIDTH 数值" min="0" max="100" step="0.5" value="2"></div>
+        <input type="range" aria-label="WIDTH 滑块" min="0" max="100" step="0.5" value="2">
         <div class="desc">布林带宽度倍数 MID ± WIDTH×DIS</div>
       </div>
       <div class="param" data-key="N">
         <div class="row1"><span class="name">N <small>0 ~ 1000</small></span>
-          <input type="number" min="0" max="1000" step="1" value="4"></div>
-        <input type="range" min="0" max="1000" step="1" value="4">
+          <input type="number" aria-label="N 数值" min="0" max="1000" step="1" value="4"></div>
+        <input type="range" aria-label="N 滑块" min="0" max="1000" step="1" value="4">
         <div class="desc">九转比较前第 N 根K线收盘价</div>
       </div>
       <div class="param" data-key="OFFSET">
         <div class="row1"><span class="name">OFFSET <small>0 ~ 1000</small></span>
-          <input type="number" min="0" max="1000" step="1" value="15"></div>
-        <input type="range" min="0" max="1000" step="1" value="15">
+          <input type="number" aria-label="OFFSET 数值" min="0" max="1000" step="1" value="15"></div>
+        <input type="range" aria-label="OFFSET 滑块" min="0" max="1000" step="1" value="15">
         <div class="desc">九转数字标注偏移距离</div>
       </div>
       </div>
-    </details>
+      </details>
 
-    <section>
-      <div class="sec-title">最新一根K线</div>
-      <div id="summary"></div>
-    </section>
+      <section class="side-card snapshot-card" aria-labelledby="snapshotTitle">
+        <div class="section-heading" id="snapshotTitle">最新 K 线</div>
+        <div id="summary" class="snapshot-grid"></div>
+      </section>
 
-    <section>
-      <div class="sec-title">信号 (新 → 旧, 点击定位)</div>
-      <div id="sigList"></div>
-    </section>
+      <section class="side-card signal-card" aria-labelledby="signalTitle">
+        <div class="signal-heading">
+          <div><span class="section-heading" id="signalTitle">信号历史</span><span class="signal-count" id="sigCount">0</span></div>
+          <span class="sort-hint">新 → 旧</span>
+        </div>
+        <div class="signal-columns" aria-hidden="true"><span>日期</span><span>信号</span><span>价格</span></div>
+        <div id="sigList" class="signal-scroll"></div>
+        <button class="more-link" id="moreSignals" type="button" hidden></button>
+      </section>
+    </div>
 
-    <section>
-      <div class="sec-title">回测</div>
-      <button class="btn primary" id="btnBacktest" style="width:100%">📊 回测当前标的</button>
-    </section>
-    <section>
-      <div class="sec-title">选股</div>
-      <button class="btn primary" id="btnScreener" style="width:100%">🔍 基本面选股</button>
-    </section>
-    <section>
-      <div class="sec-title">雷达</div>
-      <button class="btn primary" id="btnRadar" style="width:100%">🚀 机会雷达</button>
-    </section>
+    <footer class="quick-actions" aria-label="快捷操作">
+      <button class="btn primary quick-action" id="btnBacktest" type="button">
+        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3M3 19.5h18"/></svg>
+        回测当前标的
+      </button>
+      <div class="quick-action-row">
+        <button class="btn secondary quick-action" id="btnScreener" type="button">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6.5 7.2V18l-3 1.8v-7.6L4 5Z"/></svg>
+          基本面选股
+        </button>
+        <button class="btn secondary quick-action" id="btnRadar" type="button">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 4v2m8 6h-2m-6 8v-2M4 12h2"/></svg>
+          机会雷达
+        </button>
+      </div>
+    </footer>
   </aside>
 
+  <button id="sidebarScrim" class="sidebar-scrim" type="button" aria-label="关闭侧栏" tabindex="-1"></button>
+
   <main id="main">
-    <div id="chart"></div>
-    <div id="loading">计算中…</div>
-    <div id="toast"></div>
+    <header class="chart-header">
+      <button class="icon-button sidebar-toggle" id="sidebarToggle" type="button" aria-label="打开控制栏" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="chart-identity">
+        <div><strong id="chartSymbol">TQQQ</strong><span id="chartInterval">日 K</span></div>
+        <span class="chart-meta" id="chartDate">等待数据</span>
+      </div>
+      <div class="chart-kpis">
+        <div class="chart-kpi"><span>最新收盘</span><strong id="chartClose">—</strong></div>
+        <div class="chart-kpi"><span>数据状态</span><strong class="status-good" id="chartStatus"><i></i>加载中</strong></div>
+      </div>
+    </header>
+
+    <nav class="legend-bar" aria-label="图表图例">
+      <div class="legend-groups" id="legendGroups">
+        <div class="legend-group"><span class="legend-label">行情</span><button class="legend-btn" data-series="K线"><i class="legend-candle"></i>K 线</button></div>
+        <div class="legend-group"><span class="legend-label">布林</span><button class="legend-btn" data-series="布林MID"><i style="--legend-color:#f0a6c2"></i>MID</button><button class="legend-btn" data-series="布林UPPER"><i style="--legend-color:#eabf45"></i>UPPER</button><button class="legend-btn" data-series="布林LOWER"><i style="--legend-color:#38bdf8"></i>LOWER</button></div>
+        <div class="legend-group"><span class="legend-label">信号</span><button class="legend-btn" data-series="S卖"><i class="legend-dot sell"></i>S卖</button><button class="legend-btn" data-series="S条件"><i class="legend-ring"></i>S条件</button><button class="legend-btn" data-series="B买"><i class="legend-dot buy"></i>B买</button><button class="legend-btn" data-series="绝反"><i class="legend-dot reverse"></i>绝反</button><button class="legend-btn" data-series="九转标注"><i style="--legend-color:#d946ef"></i>九转</button><button class="legend-btn" data-series="定位"><i style="--legend-color:#4f8df7"></i>定位</button></div>
+        <div class="legend-group"><span class="legend-label">副图</span><button class="legend-btn" data-series="成交量"><i class="legend-bars"></i>成交量</button><button class="legend-btn" data-series="获利筹"><i style="--legend-color:#38bdf8"></i>获利筹</button><button class="legend-btn" data-series="V3"><i style="--legend-color:#f59e0b"></i>V3</button><button class="legend-btn" data-series="MACD"><i class="legend-bars"></i>MACD</button><button class="legend-btn" data-series="DIF"><i style="--legend-color:#f59e0b"></i>DIF</button><button class="legend-btn" data-series="DEA"><i style="--legend-color:#facc15"></i>DEA</button></div>
+      </div>
+    </nav>
+
+    <section class="chart-panel" aria-label="行情图表">
+      <div id="chart"></div>
+      <div id="chartState" class="chart-state"><span class="spinner"></span><span>正在加载行情与指标…</span></div>
+      <div id="loading" class="loading-pill"><span class="spinner"></span>计算中</div>
+      <div id="toast" role="alert"></div>
+    </section>
   </main>
 </div>
 
 <!-- 选股抽屉 -->
-<div id="scrOverlay">
-  <div id="scrPanel">
+<div id="scrOverlay" aria-hidden="true">
+  <div id="scrPanel" role="dialog" aria-modal="true" aria-labelledby="scrDialogTitle" tabindex="-1">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>基本面选股 <span class="muted">格雷厄姆 / 施洛斯 / 巴菲特 / 聂夫 / 林奇 / 费雪 / 戴维斯</span></h2>
-      <button class="btn" id="scrClose">✕ 关闭</button>
+      <h2 id="scrDialogTitle">基本面选股 <span class="muted">格雷厄姆 / 施洛斯 / 巴菲特 / 聂夫 / 林奇 / 费雪 / 戴维斯</span></h2>
+      <button class="btn" id="scrClose">关闭</button>
     </div>
     <div class="muted">四套大师策略 + 四套扩展策略 · 财报数据来自 Yahoo · 全部条件需满足 · 市值≥50亿元(增长类100亿)</div>
     <div class="scr-row">
-      <select id="scrStrategy"></select>
-      <select id="scrMarket" class="num" style="width:110px">
+      <select id="scrStrategy" aria-label="选股策略"></select>
+      <select id="scrMarket" class="num" aria-label="选股市场" style="width:110px">
         <option value="us">美股池</option>
         <option value="hk">港股池</option>
         <option value="cn">A股池</option>
       </select>
-      <input id="scrSymbols" type="text" spellcheck="false"
+      <input id="scrSymbols" type="text" spellcheck="false" aria-label="自定义候选池"
              placeholder="自定义候选池, 逗号分隔 (留空用市场池)">
-      <button class="btn primary" id="scrRun">▶ 运行选股</button>
+      <button class="btn primary" id="scrRun">运行选股</button>
     </div>
-    <div class="muted" id="scrStatus">加载策略中…</div>
+    <div class="muted" id="scrStatus" role="status">加载策略中…</div>
     <div id="scrResult"></div>
     <div class="sec-h">说明</div>
     <div class="muted">条件均需满足才算通过; "逐年"类条件按可得年份评估并标注覆盖;
@@ -306,27 +370,27 @@
 </div>
 
 <!-- 机会雷达抽屉 -->
-<div id="radOverlay">
-  <div id="radPanel">
+<div id="radOverlay" aria-hidden="true">
+  <div id="radPanel" role="dialog" aria-modal="true" aria-labelledby="radDialogTitle" tabindex="-1">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>🚀 机会雷达 <span class="muted">各市场市值前100 · 近期 B买 / 绝反 信号</span></h2>
-      <button class="btn" id="radClose">✕ 关闭</button>
+      <h2 id="radDialogTitle">机会雷达 <span class="muted">各市场市值前100 · 近期 B买 / 绝反 信号</span></h2>
+      <button class="btn" id="radClose">关闭</button>
     </div>
     <div class="muted">信号为 EHOPT10 v4 口径 (T 日收盘确认) · 点击列表行在主图打开该标的 · 结果缓存 30 分钟, 过期自动后台重扫</div>
     <div class="rad-row">
-      <select id="radMarket">
+      <select id="radMarket" aria-label="雷达市场">
         <option value="all" selected>全部市场</option>
         <option value="us">美股</option>
         <option value="hk">港股</option>
         <option value="cn">A股</option>
       </select>
-      <select id="radWindow">
+      <select id="radWindow" aria-label="信号时间窗口">
         <option value="3">近3个交易日</option>
         <option value="5" selected>近1周 (5个交易日)</option>
         <option value="10">近2周 (10个交易日)</option>
       </select>
-      <button class="btn primary" id="radScan">⟳ 重新扫描</button>
-      <span class="muted" id="radStatus"></span>
+      <button class="btn primary" id="radScan">重新扫描</button>
+      <span class="muted" id="radStatus" role="status"></span>
     </div>
     <div id="radResult"><div class="muted">加载中…</div></div>
     <div class="sec-h">说明</div>
@@ -337,15 +401,15 @@
 </div>
 
 <!-- 回测抽屉 -->
-<div id="btOverlay">
-  <div id="btPanel">
+<div id="btOverlay" aria-hidden="true">
+  <div id="btPanel" role="dialog" aria-modal="true" aria-labelledby="btDialogTitle" tabindex="-1">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2>策略回测 <span class="muted" id="btTitle"></span></h2>
-      <button class="btn" id="btClose">✕ 关闭</button>
+      <h2 id="btDialogTitle">策略回测 <span class="muted" id="btTitle"></span></h2>
+      <button class="btn" id="btClose">关闭</button>
     </div>
-    <div class="muted">信号 T 日收盘确认 → T+1 开盘价成交（无未来函数）· 只做多 · 双边计入成本 · 对比买入持有</div>
+    <div class="muted">信号当根 K 线收盘确认 → 下一根 K 线开盘价成交（无未来函数）· 只做多 · 双边计入成本 · 对比买入持有</div>
     <div style="margin:10px 0 4px">
-      回测周期 <select id="btYears" class="num" style="width:84px">
+      回测周期 <select id="btYears" class="num" aria-label="回测周期" style="width:84px">
         <option value="">全部</option>
         <option value="1">近1年</option>
         <option value="2">近2年</option>
@@ -353,22 +417,22 @@
         <option value="5">近5年</option>
         <option value="10">近10年</option>
       </select>
-      单边成本 % <input id="btCost" class="num" type="number" value="0.1" step="0.05" min="0" style="width:64px">
-      最长持有K线 <input id="btHold" class="num" type="number" placeholder="不限" min="1" style="width:76px">
+      单边成本 % <input id="btCost" class="num" type="number" aria-label="单边成本百分比" value="0.1" step="0.05" min="0" style="width:64px">
+      最长持有K线 <input id="btHold" class="num" type="number" aria-label="最长持有K线" placeholder="不限" min="1" style="width:76px">
       <button class="btn" id="btRun">重新计算</button>
-      <button class="btn" id="btCompare">⇄ v3/v4 对比回测</button>
+      <button class="btn" id="btCompare">v3/v4 对比回测</button>
     </div>
     <div class="sec-h">策略对比</div>
     <div id="btStrat"><div class="muted">尚未回测</div></div>
     <div id="btCompareDiv"></div>
     <div class="sec-h">资金曲线 <span class="muted">(对数刻度 · 灰虚线 = 买入持有基准)</span></div>
     <div id="btEquity"></div>
-    <div class="sec-h">信号预测力 · 事件研究 <span class="muted">(T+1 开盘入场毛收益; 单元格 = 胜率 / 均值 / t值; 右列 = 全样本基线)</span></div>
+    <div class="sec-h">信号预测力 · 事件研究 <span class="muted" id="btEventMethod">(下一根 K 线开盘入场毛收益; 单元格 = 胜率 / 超额 / HAC t/q; 右列 = 同期基线)</span></div>
     <div id="btEvent"></div>
-    <div class="sec-h">分段一致性 <span class="muted">(前60% vs 后40% 的 5 日远期, 检验信号是否稳定)</span></div>
+    <div class="sec-h">分段一致性 <span class="muted" id="btSplitMethod">(前60% vs 后40% 的 5 周期远期, 检验信号是否稳定)</span></div>
     <div id="btSplit"></div>
     <div class="sec-h">解读提示</div>
-    <div class="muted">样本数 &lt;10 的信号不具备统计参考价值; |t|&gt;2 约为 95% 置信; 指标参数为历史手工调优, 本结果属样本内评估; 长牛标的的买入持有基线天然很强。</div>
+    <div class="muted">样本数 &lt;10 的信号不具备统计参考价值; q≤0.05 表示经过多重检验校正后仍显著; 指标参数为历史手工调优, 本结果属样本内评估; 长牛标的的买入持有基线天然很强。</div>
   </div>
 </div>
 
@@ -376,6 +440,7 @@
 "use strict";
 /* ============================== 状态 ============================== */
 const INTERVAL_LABEL = { "1d": "日K", "1wk": "周K", "60m": "60分", "15m": "15分", "5m": "5分" };
+const SYMBOL_PATTERN = /^[A-Z0-9][A-Z0-9._-]{0,31}$/;
 const VER_NOTES = {
   v3: "绝反=参考指标原始信号 (3%反包, 无去重)",
   v4: "优化版: 绝反 5%反包 + 10日去重 · ★买/★卖已弃用",
@@ -386,19 +451,375 @@ const state = {
   version: "v4",             // 指标版本 v3 | v4
   rows: null,                // 行情/CSV 解析后的K线缓存 [[date,o,h,l,c,v],...]
   symbol: "TQQQ",
+  dataInterval: "1d",       // 已提交数据集的周期；不随下拉框临时值漂移
   quoteSrcName: "",
   quoteNote: "",
   csvName: "",
   data: null,                // 最近一次 /api/compute 结果
-  showMoreSignals: false,    // 信号列表是否展开九转9条目
+  signalLimit: 24,           // 信号列表渐进渲染上限
+  selectedSignal: null,      // 侧栏当前定位信号
+  legendSelected: {},        // 外置分组图例显隐状态
 };
 const chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
-window.addEventListener("resize", () => chart.resize());
+let resizeFrame = 0;
+let locateTimer = null;
+function requestChartResize() {
+  cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => chart.resize());
+}
+const chartResizeObserver = new ResizeObserver(requestChartResize);
+chartResizeObserver.observe(document.querySelector(".chart-panel"));
+window.addEventListener("resize", requestChartResize, { passive: true });
 // 页面 JS 错误直接浮出提示, 避免静默失效
 window.addEventListener("error", (e) => toast("页面错误: " + e.message));
 window.addEventListener("unhandledrejection", (e) => toast("请求异常: " + e.reason));
 
 const $ = (sel) => document.querySelector(sel);
+
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+const requestSeq = Object.create(null);
+const requestControllers = Object.create(null);
+let dataSourceEpoch = 0;
+let reportEpoch = 0;
+function beginRequest(kind) {
+  requestControllers[kind]?.abort();
+  const id = (requestSeq[kind] || 0) + 1;
+  const controller = new AbortController();
+  requestSeq[kind] = id;
+  requestControllers[kind] = controller;
+  return { kind, id, controller, signal: controller.signal };
+}
+function isCurrentRequest(request) {
+  return requestSeq[request.kind] === request.id;
+}
+function finishRequest(request) {
+  if (isCurrentRequest(request) && requestControllers[request.kind] === request.controller) {
+    delete requestControllers[request.kind];
+  }
+}
+function cancelRequest(kind) {
+  requestControllers[kind]?.abort();
+  delete requestControllers[kind];
+  requestSeq[kind] = (requestSeq[kind] || 0) + 1;
+}
+const isAbortError = (error) => error?.name === "AbortError";
+
+function isCurrentDataSource(expectedEpoch) {
+  return expectedEpoch === dataSourceEpoch;
+}
+
+function invalidateReports(message = "配置已变化，请重新运行") {
+  reportEpoch += 1;
+  cancelRequest("backtest");
+  cancelRequest("compare");
+  clearBacktestResults(message);
+  $("#btCompareDiv").replaceChildren();
+}
+
+function beginDataSourceChange() {
+  dataSourceEpoch += 1;
+  clearTimeout(computeTimer);
+  if (activeCsvReader?.readyState === FileReader.LOADING) activeCsvReader.abort();
+  activeCsvReader = null;
+  cancelRequest("quote");
+  cancelRequest("csv");
+  cancelRequest("compute");
+  invalidateReports("数据源已变化，请重新运行");
+  return dataSourceEpoch;
+}
+
+let loadingSerial = 0;
+const activeLoading = new Map();
+function beginLoading(label) {
+  const token = ++loadingSerial;
+  activeLoading.set(token, label);
+  setLoading(true, label);
+  return token;
+}
+function finishLoading(token) {
+  activeLoading.delete(token);
+  if (!activeLoading.size) {
+    setLoading(false);
+    return;
+  }
+  const labels = [...activeLoading.values()];
+  setLoading(true, labels[labels.length - 1]);
+}
+
+function readFiniteNumber(selector, fallback = null) {
+  const value = Number.parseFloat($(selector).value);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+const MAX_CLIENT_ROWS = 100_000;
+function normalizeRowsPayload(rows) {
+  if (!Array.isArray(rows) || !rows.length || rows.length > MAX_CLIENT_ROWS) {
+    throw new Error("K线响应为空或数量无效");
+  }
+  return rows.map((row) => {
+    if (!Array.isArray(row) || row.length < 6) throw new Error("K线响应格式无效");
+    const date = String(row[0] ?? "").trim();
+    const values = row.slice(1, 6);
+    if (!date || date.length > 64 || !values.every(Number.isFinite)) {
+      throw new Error("K线响应包含无效字段");
+    }
+    const [open, high, low, close, volume] = values;
+    if (open <= 0 || high <= 0 || low <= 0 || close <= 0 || volume < 0 ||
+        high < Math.max(open, close, low) || low > Math.min(open, close, high)) {
+      throw new Error("K线响应数值关系无效");
+    }
+    return [date, open, high, low, close, volume];
+  });
+}
+
+function validateComputePayload(data) {
+  if (!data || typeof data !== "object" || Array.isArray(data) || !Array.isArray(data.dates) ||
+      !data.dates.length || !data.dates.every((date) => typeof date === "string" && date.trim())) {
+    throw new Error("指标响应格式无效");
+  }
+  const n = data.dates.length;
+  const finiteSeries = ["open", "high", "low", "close", "volume"];
+  const nullableSeries = ["mid", "upper", "lower", "profit", "v3", "dif", "dea", "macd", "rsi1"];
+  const integerSeries = ["bScore", "sScore", "upCount", "downCount"];
+  for (const key of finiteSeries) {
+    if (!Array.isArray(data[key]) || data[key].length !== n || !data[key].every(Number.isFinite)) {
+      throw new Error(`指标响应字段 ${key} 无效`);
+    }
+  }
+  for (const key of nullableSeries) {
+    if (!Array.isArray(data[key]) || data[key].length !== n ||
+        !data[key].every((value) => value == null || Number.isFinite(value))) {
+      throw new Error(`指标响应字段 ${key} 无效`);
+    }
+  }
+  for (const key of integerSeries) {
+    if (!Array.isArray(data[key]) || data[key].length !== n ||
+        !data[key].every((value) => Number.isInteger(value))) {
+      throw new Error(`指标响应字段 ${key} 无效`);
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    if (data.open[i] <= 0 || data.high[i] <= 0 || data.low[i] <= 0 || data.close[i] <= 0 ||
+        data.volume[i] < 0 || data.high[i] < Math.max(data.open[i], data.close[i], data.low[i]) ||
+        data.low[i] > Math.min(data.open[i], data.close[i], data.high[i])) {
+      throw new Error("指标响应 OHLCV 无效");
+    }
+  }
+  const signalSeries = ["upNine", "downNine", "bSignal", "sSignal", "juefan",
+                        "sCondition", "buy", "sell"];
+  for (const key of signalSeries) {
+    if (!Array.isArray(data[key]) ||
+        !data[key].every((index) => Number.isInteger(index) && index >= 0 && index < n)) {
+      throw new Error(`指标响应信号 ${key} 无效`);
+    }
+  }
+  for (const key of ["upLabel", "downLabel"]) {
+    if (!Array.isArray(data[key]) || !data[key].every((pair) => Array.isArray(pair) &&
+        pair.length === 2 && Number.isInteger(pair[0]) && pair[0] >= 0 && pair[0] < n &&
+        Number.isInteger(pair[1]) && pair[1] > 0)) {
+      throw new Error(`指标响应标签 ${key} 无效`);
+    }
+  }
+  const summary = data.summary;
+  if (!data.params || typeof data.params !== "object" || !Number.isFinite(data.params.OFFSET) ||
+      !summary || typeof summary !== "object" || summary.rows !== n ||
+      !Number.isFinite(summary.close) || !Number.isInteger(summary.bScore) ||
+      !Number.isInteger(summary.sScore) || !Number.isInteger(summary.upCount) ||
+      !Number.isInteger(summary.downCount) ||
+      ![summary.mid, summary.upper, summary.lower, summary.profit]
+        .every((value) => value == null || Number.isFinite(value))) {
+    throw new Error("指标响应摘要无效");
+  }
+  return data;
+}
+
+function clearDerivedView(message = "正在计算新数据…") {
+  clearTimeout(locateTimer);
+  locateTimer = null;
+  state.selectedSignal = null;
+  state.signalLimit = 24;
+  chart.clear();
+  $("#summary").replaceChildren();
+  $("#sigList").replaceChildren();
+  $("#sigCount").textContent = "0";
+  $("#moreSignals").hidden = true;
+  $("#chartSymbol").textContent = state.source === "sample" ? "SAMPLE" : state.symbol;
+  $("#chartInterval").textContent = INTERVAL_LABEL[state.dataInterval] || "自定义";
+  $("#chartDate").textContent = message;
+  $("#chartClose").textContent = "—";
+  $("#chartStatus").className = "status-good is-loading";
+  $("#chartStatus").innerHTML = "<i></i>加载中";
+  const chartState = $("#chartState");
+  chartState.classList.remove("is-hidden", "is-error");
+  chartState.querySelector("span:last-child").textContent = message;
+}
+
+function commitDataSource(expectedEpoch, patch) {
+  if (expectedEpoch !== dataSourceEpoch) return false;
+  invalidateReports("数据源已更新，请重新运行");
+  Object.assign(state, patch, { data: null, selectedSignal: null, signalLimit: 24 });
+  updateBacktestTitle();
+  clearDerivedView();
+  return true;
+}
+
+function syncLegendButtons() {
+  document.querySelectorAll(".legend-btn").forEach((button) => {
+    const active = state.legendSelected[button.dataset.series] !== false;
+    button.classList.toggle("is-inactive", !active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+document.querySelectorAll(".legend-btn").forEach((button) => {
+  button.addEventListener("click", () => {
+    chart.dispatchAction({ type: "legendToggleSelect", name: button.dataset.series });
+  });
+});
+
+chart.on("legendselectchanged", (event) => {
+  state.legendSelected = { ...event.selected };
+  syncLegendButtons();
+});
+
+const sidebarMedia = window.matchMedia("(min-width: 1024px)");
+function setSidebarOpen(open, restoreFocus = false) {
+  const mobile = !sidebarMedia.matches;
+  const expanded = mobile && open;
+  const side = $("#side");
+  const main = $("#main");
+  const toggle = $("#sidebarToggle");
+
+  if (expanded) {
+    side.removeAttribute("inert");
+    side.setAttribute("aria-hidden", "false");
+    document.body.classList.add("sidebar-open");
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.setAttribute("aria-label", "关闭控制栏");
+    main.toggleAttribute("inert", true);
+    requestAnimationFrame(() => {
+      if (document.body.classList.contains("sidebar-open")) side.focus();
+    });
+  } else {
+    document.body.classList.remove("sidebar-open");
+    main.toggleAttribute("inert", false);
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "打开控制栏");
+    if (restoreFocus && mobile) toggle.focus();
+    side.toggleAttribute("inert", mobile);
+    side.setAttribute("aria-hidden", String(mobile));
+  }
+  window.setTimeout(requestChartResize, 190);
+}
+
+$("#sidebarToggle").addEventListener("click", () => {
+  const opening = !document.body.classList.contains("sidebar-open");
+  setSidebarOpen(opening, !opening);
+});
+$("#sidebarScrim").addEventListener("click", () => setSidebarOpen(false, true));
+let activeDialog = null;
+let dialogReturnFocus = null;
+const DIALOG_FOCUSABLE = [
+  "button:not([disabled])", "input:not([disabled])", "select:not([disabled])",
+  "textarea:not([disabled])", "a[href]", '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+function openDialog(overlay, panel, trigger) {
+  activeDialog = { overlay, panel };
+  dialogReturnFocus = trigger || document.activeElement;
+  overlay.style.display = "block";
+  overlay.setAttribute("aria-hidden", "false");
+  const app = $("#app");
+  app.toggleAttribute("inert", true);
+  requestAnimationFrame(() => {
+    if (activeDialog?.overlay === overlay && activeDialog.panel === panel) panel.focus();
+  });
+}
+
+function closeDialog(overlay, restoreFocus = true) {
+  overlay.style.display = "none";
+  overlay.setAttribute("aria-hidden", "true");
+  if (activeDialog?.overlay === overlay) activeDialog = null;
+  $("#app").toggleAttribute("inert", false);
+  if (restoreFocus) {
+    const target = dialogReturnFocus?.isConnected && !dialogReturnFocus.closest("[inert]")
+      ? dialogReturnFocus : $("#sidebarToggle");
+    target?.focus();
+  }
+  dialogReturnFocus = null;
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && activeDialog) {
+    event.preventDefault();
+    if (activeDialog.overlay === btOverlay) closeBacktest();
+    else if (activeDialog.overlay === scrOverlay) closeScreener();
+    else if (activeDialog.overlay === radOverlay) closeRadar();
+    return;
+  }
+  if (event.key === "Tab" && activeDialog) {
+    const focusable = [...activeDialog.panel.querySelectorAll(DIALOG_FOCUSABLE)]
+      .filter((element) => element.getClientRects().length > 0);
+    if (!focusable.length) {
+      event.preventDefault();
+      activeDialog.panel.focus();
+      return;
+    }
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (!activeDialog.panel.contains(document.activeElement)) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && (document.activeElement === first || document.activeElement === activeDialog.panel)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+    return;
+  }
+  if (event.key === "Escape" && document.body.classList.contains("sidebar-open")) {
+    setSidebarOpen(false, true);
+  }
+});
+sidebarMedia.addEventListener("change", () => setSidebarOpen(false));
+setSidebarOpen(false);
+$("#paramSec").addEventListener("toggle", requestChartResize);
+
+function setLoading(loading, label = "计算中") {
+  const el = $("#loading");
+  const status = $("#chartStatus");
+  el.lastChild.textContent = label;
+  el.style.display = loading ? "flex" : "none";
+  $("#btnLoad").disabled = loading;
+  status.classList.toggle("is-loading", loading);
+  if (loading) {
+    status.innerHTML = "<i></i>加载中";
+  } else if (state.data && !status.classList.contains("is-error")) {
+    status.innerHTML = "<i></i>数据就绪";
+  }
+}
+
+function setDataStatus(text, tone = "ready") {
+  const el = $("#quoteInfo");
+  el.classList.toggle("is-loading", tone === "loading");
+  el.classList.toggle("is-error", tone === "error");
+  el.querySelector("span:last-child").textContent = text;
+}
+
+function setChartError(message) {
+  $("#chartStatus").className = "status-good is-error";
+  $("#chartStatus").innerHTML = "<i></i>加载失败";
+  if (!state.data) {
+    const chartState = $("#chartState");
+    chartState.classList.remove("is-hidden");
+    chartState.classList.add("is-error");
+    chartState.querySelector("span:last-child").textContent = message;
+  }
+}
 
 /* ============================== 参数控件 ============================== */
 function readParams() {
@@ -437,21 +858,30 @@ bindParams();
 
 /* ============================== 计算 ============================== */
 let computeTimer = null;
-function scheduleCompute() { clearTimeout(computeTimer); computeTimer = setTimeout(recompute, 300); }
-
-function toast(msg) {
-  const el = $("#toast");
-  el.textContent = msg;
-  el.style.display = msg ? "block" : "none";
-  if (msg) setTimeout(() => (el.style.display = "none"), 5000);
+function scheduleCompute() {
+  invalidateReports();
+  clearTimeout(computeTimer);
+  computeTimer = setTimeout(recompute, 300);
 }
 
-async function recompute() {
+let toastTimer = null;
+function toast(msg) {
+  const el = $("#toast");
+  clearTimeout(toastTimer);
+  el.textContent = msg;
+  el.style.display = msg ? "block" : "none";
+  if (msg) toastTimer = setTimeout(() => (el.style.display = "none"), 5000);
+}
+
+async function recompute(expectedEpoch = dataSourceEpoch) {
   if (state.source !== "sample" && !state.rows) {
     toast("请先加载行情数据");
-    return;
+    return false;
   }
-  $("#loading").style.display = "block";
+  const request = beginRequest("compute");
+  const loadingToken = beginLoading("计算中");
+  const previousData = state.data;
+  let candidateData = null;
   const body = { params: readParams(), version: state.version };
   if (state.source === "sample") { body.source = "sample"; body.seed = state.seed; }
   else { body.source = "rows"; body.rows = state.rows; }
@@ -460,15 +890,30 @@ async function recompute() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: request.signal,
     });
     const data = await r.json();
-    if (data.error) { toast("计算失败: " + data.error); return; }
-    state.data = data;
-    renderAll(data);
+    if (!isCurrentRequest(request) || expectedEpoch !== dataSourceEpoch) return false;
+    if (!r.ok || !data || typeof data !== "object" || data.error) {
+      toast("计算失败: " + (data?.error || `HTTP ${r.status}`));
+      setChartError("指标计算失败，请检查数据或参数");
+      setDataStatus(`指标计算失败 · ${state.symbol || "当前数据"}`, "error");
+      return false;
+    }
+    candidateData = validateComputePayload(data);
+    state.data = candidateData;
+    renderAll(candidateData);
+    return true;
   } catch (e) {
+    if (isAbortError(e) || !isCurrentRequest(request) || expectedEpoch !== dataSourceEpoch) return false;
+    if (candidateData && state.data === candidateData) state.data = previousData;
     toast("请求失败: " + e);
+    setChartError("指标服务暂不可用");
+    setDataStatus("指标服务暂不可用", "error");
+    return false;
   } finally {
-    $("#loading").style.display = "none";
+    finishRequest(request);
+    finishLoading(loadingToken);
   }
 }
 
@@ -476,35 +921,75 @@ async function recompute() {
 async function loadQuote() {
   const symbol = $("#symbol").value.trim().toUpperCase();
   if (!symbol) { toast("请输入股票代码"); return; }
-  state.symbol = symbol;
+  if (!SYMBOL_PATTERN.test(symbol)) {
+    toast("股票代码仅支持字母、数字、点、下划线和连字符");
+    return;
+  }
+  const hadCommittedSource = state.source === "sample" ||
+    (Array.isArray(state.rows) && state.rows.length > 0);
+  const expectedEpoch = beginDataSourceChange();
+  const request = beginRequest("quote");
+  const loadingToken = beginLoading("加载行情");
   const interval = $("#interval").value;
-  $("#loading").style.display = "block";
-  $("#quoteInfo").textContent = `拉取 ${symbol} ${INTERVAL_LABEL[interval]} 行情…`;
+  setDataStatus(`拉取 ${symbol} ${INTERVAL_LABEL[interval]} 行情…`, "loading");
   try {
     const r = await fetch("/api/fetch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ symbol, interval, count: 2500 }),
+      signal: request.signal,
     });
     const d = await r.json();
-    if (d.error) throw new Error(d.error);
-    state.source = "quote";
-    state.rows = d.rows;
-    state.symbol = d.symbol || symbol;
-    state.quoteSrcName = { futu: "Futu OpenD", yahoo: "Yahoo Finance",
-                            cache: "本地缓存" }[d.source] || d.source;
-    state.quoteNote = d.note || "";
+    if (!isCurrentRequest(request) || expectedEpoch !== dataSourceEpoch) return;
+    if (!r.ok || !d || typeof d !== "object" || d.error) {
+      throw new Error(d?.error || `行情服务返回 HTTP ${r.status}`);
+    }
+    const rows = normalizeRowsPayload(d.rows);
+    if (typeof d.symbol !== "string" || !SYMBOL_PATTERN.test(d.symbol.trim().toUpperCase())) {
+      throw new Error("行情响应代码无效");
+    }
+    if (typeof d.source !== "string" || !d.source.trim() || d.interval !== interval) {
+      throw new Error("行情响应来源或周期无效");
+    }
+    const responseSymbol = d.symbol.trim().toUpperCase();
+    const responseSource = d.source.trim();
+    const responseNote = typeof d.note === "string" ? d.note : "";
+    if (!commitDataSource(expectedEpoch, {
+      source: "quote",
+      rows,
+      symbol: responseSymbol,
+      dataInterval: interval,
+      quoteSrcName: { futu: "Futu OpenD", yahoo: "Yahoo Finance",
+                      cache: "本地缓存" }[responseSource] || responseSource,
+      quoteNote: responseNote,
+      csvName: "",
+    })) return;
     renderWatchBtn();
-    await recompute();
+    await recompute(expectedEpoch);
   } catch (e) {
+    if (isAbortError(e) || !isCurrentRequest(request) || expectedEpoch !== dataSourceEpoch) return;
     toast("行情获取失败: " + (e.message || e));
-    $("#quoteInfo").textContent = `行情获取失败 (${symbol})`;
-    if (!state.data) {  // 首次加载失败则退回示例数据
-      state.source = "sample";
-      await recompute();
+    setDataStatus(`行情获取失败 (${symbol})`, "error");
+    setChartError(hadCommittedSource
+      ? "行情加载失败，正在恢复原数据" : "行情加载失败，正在尝试示例数据");
+    if (!hadCommittedSource) {  // 仅真正首次加载失败时退回示例数据
+      commitDataSource(expectedEpoch, {
+        source: "sample", seed: 7, rows: null, symbol: "SAMPLE", dataInterval: "1d",
+        quoteSrcName: "", quoteNote: "", csvName: "",
+      });
+      $("#interval").value = "1d";
+      await recompute(expectedEpoch);
+    } else if (!state.data) {
+      const restored = await recompute(expectedEpoch);
+      if (restored) {
+        const message = `行情获取失败 (${symbol}) · 已保留 ${state.symbol}`;
+        setDataStatus(message, "error");
+        toast(message);
+      }
     }
   } finally {
-    $("#loading").style.display = "none";
+    finishRequest(request);
+    finishLoading(loadingToken);
   }
 }
 
@@ -512,31 +997,46 @@ async function loadQuote() {
 const num = (v, d = 2) => (v == null ? "–" : Number(v).toFixed(d));
 
 function renderAll(d) {
+  if (!d.dates || !d.dates.length) {
+    setChartError("暂无可绘制的 K 线数据");
+    return;
+  }
+  toast("");
   renderChart(d);
   renderSummary(d);
   renderSignals(d);
   const n = d.dates.length;
+  $("#chartState").classList.add("is-hidden");
+  $("#chartState").classList.remove("is-error");
+  $("#chartSymbol").textContent = state.source === "sample" ? "SAMPLE" : state.symbol;
+  $("#chartInterval").textContent = INTERVAL_LABEL[state.dataInterval] || "自定义";
+  $("#chartDate").textContent = `最新 ${d.dates[n - 1]} · ${n.toLocaleString("zh-CN")} 根 K 线`;
+  $("#chartClose").textContent = num(d.summary.close);
+  $("#chartStatus").className = "status-good";
+  $("#chartStatus").innerHTML = "<i></i>数据就绪";
   if (state.source === "sample") {
-    $("#quoteInfo").textContent = `示例数据 (${n} 根, seed=${state.seed})`;
+    setDataStatus(`示例数据 · ${n.toLocaleString("zh-CN")} 根 · seed ${state.seed}`);
   } else if (state.source === "csv") {
-    $("#quoteInfo").textContent = `${state.csvName} (${n} 根)`;
+    setDataStatus(`CSV · ${state.csvName} · ${n.toLocaleString("zh-CN")} 根`);
   } else {
     const note = state.quoteNote ? ` · 注: ${state.quoteNote}` : "";
-    $("#quoteInfo").textContent =
-      `${state.symbol} · ${state.quoteSrcName} · ${INTERVAL_LABEL[$("#interval").value]} · ` +
-      `${n} 根 · 最新 ${d.dates[n - 1]}${note}`;
+    setDataStatus(
+      `${state.symbol} · ${state.quoteSrcName} · ${INTERVAL_LABEL[state.dataInterval]} · ` +
+      `${n.toLocaleString("zh-CN")} 根 · ${d.dates[n - 1]}${note}`);
   }
 }
 
 function renderSummary(d) {
   const s = d.summary;
-  const chips = [
+  const metrics = [
     ["收盘", num(s.close)], ["MID", num(s.mid)], ["获利筹", num(s.profit, 1)],
-    ["B分", s.bScore, "b"], ["S分", s.sScore, "s"],
-    ["九转", `上${s.upCount}/下${s.downCount}`],
+    ["B 分数", s.bScore, s.bScore > 0 ? "buy" : ""],
+    ["S 分数", s.sScore, s.sScore > 0 ? "sell" : ""],
+    ["九转 上 / 下", `${s.upCount} / ${s.downCount}`],
   ];
-  $("#summary").innerHTML = chips.map(([k, v]) =>
-    `<span class="chip">${k} <b>${v}</b></span>`).join("");
+  $("#summary").innerHTML = metrics.map(([k, v, cls = ""]) =>
+    `<div class="metric"><span class="metric-label">${k}</span>` +
+    `<strong class="metric-value ${cls}">${v}</strong></div>`).join("");
 }
 
 /* ★买/★卖 已弃用, 不在列表/tooltip 展示 (事件研究中仍持续观测) */
@@ -553,35 +1053,47 @@ function renderSignals(d) {
     for (const i of d[key]) items.push({ i, label, cls, key });
   }
   items.sort((a, b) => b.i - a.i);
-  // 上九转9/下九转9 默认折叠, 点击"查看更多信号"展开
-  const isNine = (it) => it.key === "upNine" || it.key === "downNine";
-  const visible = state.showMoreSignals ? items : items.filter((it) => !isNine(it));
-  const hiddenCount = items.length - visible.length;
-  let html = visible.slice(0, 80).map((it) => `
-    <div class="sig-item" data-i="${it.i}">
+  const visible = items.slice(0, state.signalLimit);
+  const hiddenCount = Math.max(0, items.length - visible.length);
+  const html = visible.map((it) => `
+    <div class="sig-item${state.selectedSignal === it.i ? " is-selected" : ""}" data-i="${it.i}"
+         role="button" tabindex="0" aria-label="定位 ${d.dates[it.i]} ${it.label}，价格 ${num(d.close[it.i])}">
       <span class="d">${d.dates[it.i]}</span>
       <span class="t"><span class="badge ${it.cls}">${it.label}</span></span>
       <span class="p">${num(d.close[it.i])}</span>
     </div>`).join("");
-  if (hiddenCount > 0) {
-    html += state.showMoreSignals
-      ? '<div class="more-link" id="moreSignals">收起九转9信号</div>'
-      : `<div class="more-link" id="moreSignals">查看更多信号 (+${hiddenCount} 九转9)</div>`;
-  } else if (state.showMoreSignals && hiddenCount === 0 && items.some(isNine)) {
-    html += '<div class="more-link" id="moreSignals">收起九转9信号</div>';
-  }
-  $("#sigList").innerHTML = html || '<div class="muted">当前参数下无信号</div>';
+  $("#sigCount").textContent = items.length.toLocaleString("zh-CN");
+  $("#sigList").innerHTML = html || '<div class="signal-empty">当前参数下无信号</div>';
   $("#sigList").querySelectorAll(".sig-item").forEach((el) => {
     el.addEventListener("click", () => locate(+el.dataset.i));
+    el.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        locate(+el.dataset.i);
+      }
+    });
   });
-  const more = document.querySelector("#moreSignals");
-  if (more) more.addEventListener("click", () => {
-    state.showMoreSignals = !state.showMoreSignals;
-    if (state.data) renderSignals(state.data);
-  });
+  const more = $("#moreSignals");
+  more.hidden = !items.length;
+  more.textContent = hiddenCount > 0
+    ? `查看更多信号 (+${hiddenCount})`
+    : state.signalLimit > 24 ? "收起信号" : "";
+  if (!more.textContent) more.hidden = true;
 }
 
+$("#moreSignals").addEventListener("click", () => {
+  if (!state.data) return;
+  const total = SIG_TYPES.reduce((count, [key]) => count + state.data[key].length, 0);
+  state.signalLimit = state.signalLimit >= total ? 24 : Math.min(total, state.signalLimit + 56);
+  renderSignals(state.data);
+  if (state.signalLimit === 24) $("#sigList").scrollTop = 0;
+});
+
 function locate(i) {
+  if (!state.data) return;
+  clearTimeout(locateTimer);
+  const locatedData = state.data;
+  const expectedEpoch = dataSourceEpoch;
   const n = state.data.dates.length;
   const span = Math.min(120, n);
   const start = Math.max(0, i - Math.floor(span * 0.8));
@@ -589,10 +1101,20 @@ function locate(i) {
   // 用百分比窗口定位 (startValue 在多轴联动下不可靠)
   const sp = n > 1 ? (start / (n - 1)) * 100 : 0;
   const ep = n > 1 ? (end / (n - 1)) * 100 : 100;
+  state.selectedSignal = i;
+  renderSignals(state.data);
   chart.dispatchAction({ type: "dataZoom", start: sp, end: ep });
   // 目标K线高亮竖线
-  chart.setOption({ series: [{ id: "locate", markLine: { data: [{ xAxis: i }] } }] });
+  chart.setOption({ series: [
+    { id: "locate", markLine: { data: [{ xAxis: i }] } },
+    { id: "locateRing", data: [[i, state.data.close[i]]] },
+  ] });
   chart.dispatchAction({ type: "showTip", seriesIndex: 0, dataIndex: i });
+  locateTimer = window.setTimeout(() => {
+    locateTimer = null;
+    if (expectedEpoch !== dataSourceEpoch || state.data !== locatedData) return;
+    chart.setOption({ series: [{ id: "locateRing", data: [] }] });
+  }, 1100);
 }
 
 /* ============================== 图表 ============================== */
@@ -612,183 +1134,263 @@ function renderChart(d) {
     candles.push([d.open[i], d.close[i], d.low[i], d.high[i]]);
     volData.push({
       value: d.volume[i],
-      itemStyle: { color: d.close[i] >= d.open[i] ? "rgba(239,35,42,.75)" : "rgba(20,177,67,.75)" },
+      itemStyle: { color: d.close[i] >= d.open[i] ? "rgba(239,68,68,.68)" : "rgba(34,197,94,.68)" },
     });
   }
   const pts = (idxArr, yFn) => idxArr.map((i) => [i, yFn(i)]);
   const labelPts = (pairs, yFn) => pairs.map(([i, v]) => [i, yFn(i), v]);
+  const markerPts = (idxArr, yFn, baseOffset, stackAfter = []) => idxArr.map((i) => ({
+    value: [i, yFn(i)],
+    symbolOffset: [0, baseOffset + (stackAfter.some((arr) => arr.includes(i)) ? Math.sign(baseOffset) * 18 : 0)],
+  }));
 
-  const mkLabel = (formatter, position, color, distance) => ({
-    show: true, formatter, position, distance, color, fontSize: 11, fontWeight: 600,
+  const mkLabel = (position, color) => ({
+    show: true,
+    formatter: (p) => Number(p.value[2]) >= 8
+      ? `{complete|${p.value[2]}}` : `{normal|${p.value[2]}}`,
+    position,
+    distance: OFFSET,
+    color,
+    fontFamily: "SFMono-Regular, Consolas, monospace",
+    fontSize: 10,
+    rich: {
+      normal: { color, fontSize: 10, fontWeight: 500 },
+      complete: { color, fontSize: 11, fontWeight: 750 },
+    },
   });
   const invisible = {
     type: "scatter", symbol: "circle", symbolSize: 0.1,
-    itemStyle: { color: "transparent" }, emphasis: { scale: false }, z: 12,
+    itemStyle: { color: "transparent" }, emphasis: { scale: false },
+    labelLayout: { hideOverlap: true }, silent: true, tooltip: { show: false }, z: 12,
   };
 
   const macdBar = d.macd.map((v) => ({
     value: v,
-    itemStyle: { color: v != null && v >= 0 ? "rgba(239,35,42,.8)" : "rgba(20,177,67,.8)" },
+    itemStyle: { color: v != null && v >= 0 ? "rgba(239,68,68,.76)" : "rgba(34,197,94,.76)" },
   }));
 
   const option = {
     animation: false,
     backgroundColor: "transparent",
-    axisPointer: { link: [{ xAxisIndex: "all" }], label: { backgroundColor: "#334" } },
+    axisPointer: {
+      link: [{ xAxisIndex: "all" }],
+      snap: true,
+      lineStyle: { color: "rgba(148,163,184,.48)", width: 1, type: "dashed" },
+      label: { show: false, color: "#dce7f5", backgroundColor: "#334155", fontSize: 10 },
+    },
     tooltip: {
       trigger: "axis",
-      axisPointer: { type: "cross" },
-      backgroundColor: "rgba(18,22,28,.96)",
-      borderColor: "#2a313c",
-      textStyle: { color: "#d5dbe3", fontSize: 12 },
+      triggerOn: "mousemove|click",
+      axisPointer: { type: "line" },
+      confine: true,
+      enterable: false,
+      transitionDuration: 0,
+      extraCssText: "pointer-events:none;border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.42);",
+      backgroundColor: "rgba(15,21,29,.98)",
+      borderColor: "#334155",
+      borderWidth: 1,
+      padding: [9, 10],
+      textStyle: { color: "#e6edf6", fontSize: 11 },
+      position: (point, _params, _dom, _rect, size) => {
+        const gap = 14;
+        const [viewW, viewH] = size.viewSize;
+        const [tipW, tipH] = size.contentSize;
+        let x = point[0] + gap;
+        let y = point[1] - Math.min(42, tipH * .2);
+        if (x + tipW + 8 > viewW) x = point[0] - tipW - gap;
+        if (y + tipH + 8 > viewH) y = viewH - tipH - 8;
+        return [Math.max(8, x), Math.max(8, y)];
+      },
       formatter: (params) => {
         const p = Array.isArray(params) ? params[0] : params;
         return tooltipHtml(Math.max(0, Math.min(n - 1, p.dataIndex)));
       },
     },
     legend: {
-      type: "scroll", top: 4, left: 56, right: 16, height: 24,
-      inactiveColor: "#444",
-      textStyle: { color: "#9aa4b0", fontSize: 11 },
-      itemWidth: 14, itemHeight: 8, itemGap: 10,
+      show: false,
+      selectedMode: true,
+      selected: state.legendSelected,
+      data: ["K线", "布林MID", "布林UPPER", "布林LOWER", "九转标注", "S卖", "S条件",
+        "B买", "绝反", "定位", "成交量", "获利筹", "V3", "MACD", "DIF", "DEA"],
     },
     grid: [
-      { left: 64, right: 24, top: 34, height: "46%" },   // 0 主图
-      { left: 64, right: 24, top: "53%", height: "11%" }, // 1 成交量
-      { left: 64, right: 24, top: "68%", height: "12%" }, // 2 获利筹
-      { left: 64, right: 24, top: "84%", height: "12%" }, // 3 MACD
+      { left: 14, right: 64, top: 12, height: "48%" },       // 0 主图
+      { left: 14, right: 64, top: "53.5%", height: "11%" }, // 1 成交量
+      { left: 14, right: 64, top: "68%", height: "12%" },   // 2 获利筹
+      { left: 14, right: 64, top: "83.5%", height: "10.5%" }, // 3 MACD
     ],
     xAxis: [0, 1, 2, 3].map((gi) => ({
       gridIndex: gi, type: "category", data: dates,
-      boundary: true, axisLine: { lineStyle: { color: "#2a313c" } },
-      axisTick: { show: false }, axisLabel: { show: false },
+      boundaryGap: true,
+      axisLine: { show: true, lineStyle: { color: "#243141", width: 1 } },
+      axisTick: { show: false },
+      axisLabel: { show: gi === 3, color: "#64748b", fontSize: 10, margin: 8,
+        hideOverlap: true, fontFamily: "SFMono-Regular, Consolas, monospace" },
+      axisPointer: { label: { show: gi === 3, margin: 5, fontSize: 10,
+        color: "#e6edf6", backgroundColor: "#334155" } },
       splitLine: { show: false }, min: "dataMin", max: "dataMax",
     })),
     yAxis: [
-      { gridIndex: 0, scale: true, axisLabel: { color: "#7d8590" },
-        splitLine: { lineStyle: { color: "#222a35" } } },
-      { gridIndex: 1, scale: true, axisLabel: { color: "#7d8590", formatter: (v) => fmtVol(v) },
-        splitLine: { show: false }, splitNumber: 2 },
-      { gridIndex: 2, min: -10, max: 120, axisLabel: { color: "#7d8590" },
-        splitLine: { lineStyle: { color: "#222a35" } }, splitNumber: 2 },
-      { gridIndex: 3, scale: true, axisLabel: { color: "#7d8590" },
-        splitLine: { lineStyle: { color: "#222a35" } }, splitNumber: 2 },
+      { gridIndex: 0, position: "right", scale: true, splitNumber: 5,
+        axisLabel: { color: "#64748b", fontSize: 10, margin: 9,
+          fontFamily: "SFMono-Regular, Consolas, monospace" },
+        axisLine: { show: false }, axisTick: { show: false }, axisPointer: { label: { show: false } },
+        splitLine: { lineStyle: { color: "rgba(36,49,65,.48)", width: 1 } } },
+      { gridIndex: 1, position: "right", scale: true, splitNumber: 2,
+        axisLabel: { color: "#64748b", fontSize: 10, margin: 9, formatter: (v) => fmtVol(v) },
+        axisLine: { show: false }, axisTick: { show: false }, axisPointer: { label: { show: false } },
+        splitLine: { show: false } },
+      { gridIndex: 2, position: "right", min: -10, max: 120, splitNumber: 2,
+        axisLabel: { color: "#64748b", fontSize: 10, margin: 9 },
+        axisLine: { show: false }, axisTick: { show: false }, axisPointer: { label: { show: false } },
+        splitLine: { lineStyle: { color: "rgba(36,49,65,.42)" } } },
+      { gridIndex: 3, position: "right", scale: true, splitNumber: 2,
+        axisLabel: { color: "#64748b", fontSize: 10, margin: 9 },
+        axisLine: { show: false }, axisTick: { show: false }, axisPointer: { label: { show: false } },
+        splitLine: { lineStyle: { color: "rgba(36,49,65,.42)" } } },
     ],
     dataZoom: [
-      { type: "inside", xAxisIndex: [0, 1, 2, 3], start: Math.max(0, 100 - 260 / n * 100), end: 100 },
-      { type: "slider", xAxisIndex: [0, 1, 2, 3], bottom: 2, height: 18,
-        borderColor: "#2a313c", backgroundColor: "#12161c",
-        fillerColor: "rgba(76,141,255,.15)", handleStyle: { color: "#4c8dff" },
-        textStyle: { color: "#7d8590", fontSize: 10 } },
+      { type: "inside", xAxisIndex: [0, 1, 2, 3], zoomOnMouseWheel: "shift",
+        moveOnMouseMove: true, moveOnMouseWheel: true,
+        start: Math.max(0, 100 - 260 / n * 100), end: 100 },
+      { type: "slider", xAxisIndex: [0, 1, 2, 3], bottom: 3, height: 22,
+        showDetail: false, brushSelect: false, borderColor: "#243141", backgroundColor: "#0e151d",
+        dataBackground: { lineStyle: { color: "#3b82c4", opacity: .55 },
+          areaStyle: { color: "#18314a", opacity: .5 } },
+        selectedDataBackground: { lineStyle: { color: "#6da1ff", opacity: .85 },
+          areaStyle: { color: "#234d78", opacity: .45 } },
+        fillerColor: "rgba(79,141,247,.12)",
+        handleIcon: "path://M-1,0 L1,0 L1,16 L-1,16 Z",
+        handleSize: "72%", handleStyle: { color: "#6da1ff", borderColor: "#a9c8ff" },
+        moveHandleSize: 0, textStyle: { color: "#64748b", fontSize: 9 } },
     ],
     series: [
       /* ---- 主图 ---- */
       { name: "K线", type: "candlestick", xAxisIndex: 0, yAxisIndex: 0, data: candles,
-        itemStyle: { color: "#ef232a", color0: "#14b143", borderColor: "#ef232a", borderColor0: "#14b143" },
+        barMaxWidth: 12,
+        itemStyle: { color: "#ef4444", color0: "#22c55e", borderColor: "#ef4444", borderColor0: "#22c55e" },
+        emphasis: { itemStyle: { borderWidth: 1.5 } },
         z: 5 },
       { name: "布林MID", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: d.mid,
-        symbol: "none", lineStyle: { width: 1, color: "#FFAEC9" }, z: 6 },
+        symbol: "none", lineStyle: { width: 1.2, color: "#e9a4bd", opacity: .88 }, z: 6 },
       { name: "布林UPPER", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: d.upper,
-        symbol: "none", lineStyle: { width: 1, color: "#FFC90E" }, z: 6 },
+        symbol: "none", lineStyle: { width: 1, color: "#eabf45", opacity: .82 }, z: 6 },
       { name: "布林LOWER", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: d.lower,
-        symbol: "none", lineStyle: { width: 1, color: "#0CAEE6" }, z: 6 },
+        symbol: "none", lineStyle: { width: 1, color: "#38bdf8", opacity: .82 }, z: 6 },
       { name: "九转标注", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
         data: labelPts(d.upLabel, (i) => d.high[i]),
-        label: mkLabel((p) => p.value[2], "top", "#FF00FF", OFFSET) },
-      { name: "九转标注", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
-        data: pts(d.upNine, (i) => d.high[i]),
-        label: mkLabel("9", "top", "#00c853", OFFSET) },
+        label: mkLabel("top", "#d946ef") },
       { name: "九转标注", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
         data: labelPts(d.downLabel, (i) => d.low[i]),
-        label: mkLabel((p) => p.value[2], "bottom", "#00e676", OFFSET) },
-      { name: "九转标注", ...invisible, xAxisIndex: 0, yAxisIndex: 0,
-        data: pts(d.downNine, (i) => d.low[i]),
-        label: mkLabel("9", "bottom", "#FF00FF", OFFSET) },
-      { name: "S卖", type: "effectScatter", xAxisIndex: 0, yAxisIndex: 0,
+        label: mkLabel("bottom", "#22c55e") },
+      { name: "S卖", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
         symbol: "circle", symbolSize: 15, z: 14,
-        symbolOffset: [0, -22],
-        rippleEffect: { scale: 2.4, brushType: "stroke" },
-        itemStyle: { color: "#30d158", borderColor: "#fff", borderWidth: 1.2,
-                     shadowBlur: 12, shadowColor: "rgba(48,209,88,.95)" },
+        itemStyle: { color: "#22c55e", borderColor: "#dffbe8", borderWidth: 1,
+                     shadowBlur: 4, shadowColor: "rgba(34,197,94,.4)" },
         label: { show: true, formatter: "S", position: "inside",
-                 color: "#fff", fontSize: 10, fontWeight: "bold" },
-        data: pts(d.sSignal, (i) => d.high[i]) },
-      { name: "S条件", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
-        symbol: "circle", symbolSize: 8, symbolOffset: [0, -48], z: 12,
-        itemStyle: { color: "rgba(48,209,88,.12)", borderColor: "#30d158", borderWidth: 2 },
-        emphasis: { scale: false },
-        data: pts(d.sCondition, (i) => d.high[i]) },
-      { name: "B买", type: "effectScatter", xAxisIndex: 0, yAxisIndex: 0,
-        symbol: "circle", symbolSize: 15, z: 14,
-        symbolOffset: [0, 22],
-        rippleEffect: { scale: 2.4, brushType: "stroke" },
-        itemStyle: { color: "#ff3b30", borderColor: "#fff", borderWidth: 1.2,
-                     shadowBlur: 12, shadowColor: "rgba(255,59,48,.95)" },
-        label: { show: true, formatter: "B", position: "inside",
-                 color: "#fff", fontSize: 10, fontWeight: "bold" },
-        data: pts(d.bSignal, (i) => d.low[i]) },
-      { name: "绝反", type: "effectScatter", xAxisIndex: 0, yAxisIndex: 0,
-        symbol: "circle", symbolSize: 13, z: 14,
-        symbolOffset: [0, 46],
-        rippleEffect: { scale: 2.2, brushType: "stroke" },
-        itemStyle: { color: "#ff9f0a", borderColor: "#fff", borderWidth: 1.2,
-                     shadowBlur: 12, shadowColor: "rgba(255,159,10,.95)" },
-        label: { show: true, formatter: "绝", position: "inside",
                  color: "#fff", fontSize: 9, fontWeight: "bold" },
-        data: pts(d.juefan, (i) => d.low[i]) },
+        emphasis: { scale: 1.22, itemStyle: { shadowBlur: 7 } },
+        data: markerPts(d.sSignal, (i) => d.high[i], -20) },
+      { name: "S条件", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
+        symbol: "circle", symbolSize: 8, z: 12,
+        itemStyle: { color: "rgba(34,197,94,.08)", borderColor: "#22c55e", borderWidth: 1.4 },
+        emphasis: { scale: 1.35 },
+        data: markerPts(d.sCondition, (i) => d.high[i], -38, [d.sSignal]) },
+      { name: "B买", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
+        symbol: "circle", symbolSize: 15, z: 14,
+        itemStyle: { color: "#ef4444", borderColor: "#fee2e2", borderWidth: 1,
+                     shadowBlur: 4, shadowColor: "rgba(239,68,68,.4)" },
+        label: { show: true, formatter: "B", position: "inside",
+                 color: "#fff", fontSize: 9, fontWeight: "bold" },
+        emphasis: { scale: 1.22, itemStyle: { shadowBlur: 7 } },
+        data: markerPts(d.bSignal, (i) => d.low[i], 20) },
+      { name: "绝反", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
+        symbol: "circle", symbolSize: 14, z: 14,
+        itemStyle: { color: "#f59e0b", borderColor: "#fef3c7", borderWidth: 1,
+                     shadowBlur: 4, shadowColor: "rgba(245,158,11,.38)" },
+        label: { show: true, formatter: "绝", position: "inside",
+                 color: "#fff", fontSize: 8, fontWeight: "bold" },
+        emphasis: { scale: 1.22, itemStyle: { shadowBlur: 7 } },
+        data: markerPts(d.juefan, (i) => d.low[i], 40, [d.bSignal]) },
       /* 信号定位标记线 (locate() 通过 id 更新) */
       { id: "locate", name: "定位", type: "line", xAxisIndex: 0, yAxisIndex: 0,
         data: [], silent: true, z: 9,
         markLine: { silent: true, symbol: "none", animation: false,
           label: { show: false }, data: [],
-          lineStyle: { color: "#4c8dff", width: 1.2, type: "solid" } } },
+          lineStyle: { color: "#4f8df7", width: 1, type: "solid", opacity: .74 } } },
+      { id: "locateRing", name: "定位", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
+        data: [], symbol: "circle", symbolSize: 28, silent: true, z: 18,
+        animation: true, animationDuration: 180,
+        itemStyle: { color: "transparent", borderColor: "#6da1ff", borderWidth: 2,
+          shadowBlur: 5, shadowColor: "rgba(79,141,247,.42)" } },
       /* ---- 成交量 ---- */
-      { name: "成交量", type: "bar", xAxisIndex: 1, yAxisIndex: 1, data: volData, z: 5 },
+      { name: "成交量", type: "bar", xAxisIndex: 1, yAxisIndex: 1, data: volData,
+        barMaxWidth: 10, large: true, z: 5 },
       /* ---- 获利筹 ---- */
       { name: "获利筹", type: "line", xAxisIndex: 2, yAxisIndex: 2, data: d.profit,
-        symbol: "none", lineStyle: { width: 1.2, color: "#4fc3f7" }, z: 6,
+        symbol: "none", lineStyle: { width: 1.2, color: "#38bdf8" }, z: 6,
         markLine: { silent: true, symbol: "none", label: { color: "#7d8590", fontSize: 10 },
-          lineStyle: { color: "#3a4453", type: "dashed" },
+          lineStyle: { color: "#334155", type: "dashed", opacity: .74 },
           data: [{ yAxis: 30, label: { formatter: "30" } }, { yAxis: 80, label: { formatter: "80" } }] } },
       { name: "V3", type: "line", xAxisIndex: 2, yAxisIndex: 2, data: d.v3,
-        symbol: "none", lineStyle: { width: 1, color: "#ffb74d" }, z: 6 },
+        symbol: "none", lineStyle: { width: 1, color: "#f59e0b" }, z: 6 },
       /* ---- MACD(12,26,9) ---- */
       { name: "MACD", type: "bar", xAxisIndex: 3, yAxisIndex: 3, data: macdBar, z: 5 },
       { name: "DIF", type: "line", xAxisIndex: 3, yAxisIndex: 3, data: d.dif,
-        symbol: "none", lineStyle: { width: 1, color: "#ff9800" }, z: 6 },
+        symbol: "none", lineStyle: { width: 1, color: "#f59e0b" }, z: 6 },
       { name: "DEA", type: "line", xAxisIndex: 3, yAxisIndex: 3, data: d.dea,
-        symbol: "none", lineStyle: { width: 1, color: "#ffee58" }, z: 6 },
+        symbol: "none", lineStyle: { width: 1, color: "#facc15" }, z: 6 },
     ],
   };
   chart.setOption(option, true);
+  syncLegendButtons();
 }
 
 function tooltipHtml(i) {
   const d = state.data;
   if (!d) return "";
   const up = d.close[i] >= d.open[i];
-  const cUp = up ? "#ef232a" : "#14b143";
+  const cUp = up ? "#ef4444" : "#22c55e";
   const chg = (d.open[i] != null && d.open[i] !== 0)
     ? ((d.close[i] / d.open[i] - 1) * 100).toFixed(2) + "%" : "–";
-  const row = (k, v, c) => `<span style="color:#7d8590">${k}</span> <b style="color:${c || "#d5dbe3"}">${v}</b>`;
+  const row = (k, v, c) => `<div class="tip-row"${c ? ` style="--tip-color:${c}"` : ""}>` +
+    `<span>${k}</span><b>${v}</b></div>`;
   const marks = [];
   for (const [key, label, cls] of SIG_TYPES) {
-    if (d[key].includes(i)) marks.push(`<span class="badge ${cls}" style="margin-right:4px">${label}</span>`);
+    if (d[key].includes(i)) marks.push(`<span class="badge ${cls}">${label}</span>`);
   }
-  return `<div style="min-width:210px">
-    <div style="margin-bottom:2px"><b>${d.dates[i]}</b></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px 10px">
-      ${row("开", num(d.open[i]), cUp)} ${row("高", num(d.high[i]), cUp)}
-      ${row("低", num(d.low[i]), cUp)} ${row("收", num(d.close[i]), cUp)}
-      ${row("量", fmtVol(d.volume[i]))} ${row("幅度", chg)}
-      ${row("UPPER", num(d.upper[i]), "#FFC90E")} ${row("MID", num(d.mid[i]), "#FFAEC9")}
-      ${row("LOWER", num(d.lower[i]), "#0CAEE6")} ${row("RSI1", num(d.rsi1[i], 1))}
-      ${row("获利筹", num(d.profit[i], 1), "#4fc3f7")} ${row("V3", num(d.v3[i], 1), "#ffb74d")}
-      ${row("DIF", num(d.dif[i], 3), "#ff9800")} ${row("DEA", num(d.dea[i], 3), "#ffee58")}
-      ${row("MACD", num(d.macd[i], 3))} ${row("B/S分", `${d.bScore[i]} / ${d.sScore[i]}`)}
+  return `<div class="gcn-tooltip">
+    <div class="tip-date"><span>${d.dates[i]}</span><span class="tip-change" style="color:${cUp}">${chg}</span></div>
+    <div class="tip-section">
+      <div class="tip-section-title">行情</div>
+      <div class="tip-grid">
+        ${row("开", num(d.open[i]), cUp)} ${row("高", num(d.high[i]), cUp)}
+        ${row("低", num(d.low[i]), cUp)} ${row("收", num(d.close[i]), cUp)}
+        ${row("成交量", fmtVol(d.volume[i]))} ${row("幅度", chg, cUp)}
+      </div>
     </div>
-    <div style="margin-top:3px">${row("九转", `上 ${d.upCount[i]} / 下 ${d.downCount[i]}`)}</div>
-    ${marks.length ? `<div style="margin-top:3px">${marks.join("")}</div>` : ""}
+    <div class="tip-section">
+      <div class="tip-section-title">布林与摆动</div>
+      <div class="tip-grid">
+        ${row("UPPER", num(d.upper[i]), "#eabf45")} ${row("MID", num(d.mid[i]), "#e9a4bd")}
+        ${row("LOWER", num(d.lower[i]), "#38bdf8")} ${row("RSI1", num(d.rsi1[i], 1))}
+        ${row("获利筹", num(d.profit[i], 1), "#38bdf8")} ${row("V3", num(d.v3[i], 1), "#f59e0b")}
+      </div>
+    </div>
+    <div class="tip-section">
+      <div class="tip-section-title">MACD</div>
+      <div class="tip-grid">
+        ${row("DIF", num(d.dif[i], 3), "#f59e0b")} ${row("DEA", num(d.dea[i], 3), "#facc15")}
+        ${row("MACD", num(d.macd[i], 3), d.macd[i] >= 0 ? "#ef4444" : "#22c55e")}
+      </div>
+    </div>
+    <div class="tip-section">
+      <div class="tip-summary">
+        <span>B / S 分 ${d.bScore[i]} / ${d.sScore[i]}</span>
+        <span>九转 上 ${d.upCount[i]} / 下 ${d.downCount[i]}</span>
+      </div>
+      ${marks.length ? `<div class="tip-badges">${marks.join("")}</div>` : ""}
+    </div>
   </div>`;
 }
 
@@ -807,11 +1409,15 @@ const DEFAULT_WATCH = ["TQQQ", "MSFT", "NFLX", "YINN", "SNOW", "TSLA",
 function getWatch() {
   try {
     const l = JSON.parse(localStorage.getItem(WATCH_KEY));
-    return Array.isArray(l) ? l : [];
+    return Array.isArray(l)
+      ? [...new Set(l.map((s) => String(s).trim().toUpperCase()).filter((s) => SYMBOL_PATTERN.test(s)))].slice(0, 50)
+      : [];
   } catch { return []; }
 }
 function setWatch(list) {
-  localStorage.setItem(WATCH_KEY, JSON.stringify(list));
+  const clean = [...new Set(list.map((s) => String(s).trim().toUpperCase())
+    .filter((s) => SYMBOL_PATTERN.test(s)))].slice(0, 50);
+  localStorage.setItem(WATCH_KEY, JSON.stringify(clean));
   renderWatchBtn();
 }
 function currentInputSymbol() {
@@ -820,32 +1426,48 @@ function currentInputSymbol() {
 function renderWatchBtn() {
   const on = getWatch().includes(currentInputSymbol());
   const btn = $("#btnWatch");
-  btn.textContent = on ? "★" : "☆";
   btn.classList.toggle("on", on);
+  btn.setAttribute("aria-pressed", String(on));
+  btn.setAttribute("aria-label", on ? "取消收藏当前标的" : "收藏当前标的");
 }
-function closeWatchDrop() { $("#watchDrop").style.display = "none"; }
+function closeWatchDrop() { $("#watchDrop").hidden = true; }
 function renderWatchDrop() {
   const list = getWatch();
   const drop = $("#watchDrop");
-  drop.innerHTML = list.length
-    ? list.map((s) => `
-      <div class="watch-item" data-s="${s}">
-        <span class="s">${s}</span>
-        <span class="del" title="移出关注">×</span>
-      </div>`).join("")
-    : '<div class="watch-empty">暂无关注 · 点击 ★ 收藏当前代码</div>';
-  drop.querySelectorAll(".watch-item").forEach((el) => {
-    el.addEventListener("click", (ev) => {
-      if (ev.target.classList.contains("del")) {  // 移出关注
-        setWatch(getWatch().filter((s) => s !== el.dataset.s));
-        renderWatchDrop();  // 下拉保持打开时即时刷新
-        ev.stopPropagation();
-        return;
-      }
-      $("#symbol").value = el.dataset.s;
+  drop.replaceChildren();
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "watch-empty";
+    empty.textContent = "暂无关注 · 点击 ★ 收藏当前代码";
+    drop.append(empty);
+    return;
+  }
+  list.forEach((symbol) => {
+    const item = document.createElement("div");
+    item.className = "watch-item";
+    const select = document.createElement("button");
+    select.className = "s watch-select";
+    select.type = "button";
+    select.setAttribute("aria-label", `加载行情 ${symbol}`);
+    select.textContent = symbol;
+    select.addEventListener("click", () => {
+      $("#symbol").value = symbol;
       closeWatchDrop();
       loadQuote();
     });
+    const remove = document.createElement("button");
+    remove.className = "del";
+    remove.type = "button";
+    remove.title = `移出关注 ${symbol}`;
+    remove.setAttribute("aria-label", `移出关注 ${symbol}`);
+    remove.textContent = "×";
+    remove.addEventListener("click", (event) => {
+      setWatch(getWatch().filter((s) => s !== symbol));
+      renderWatchDrop();
+      event.stopPropagation();
+    });
+    item.append(select, remove);
+    drop.append(item);
   });
 }
 $("#btnWatch").addEventListener("click", () => {
@@ -854,39 +1476,73 @@ $("#btnWatch").addEventListener("click", () => {
   const list = getWatch();
   setWatch(list.includes(sym) ? list.filter((s) => s !== sym) : [...list, sym]);
 });
-$("#symbol").addEventListener("focus", () => { renderWatchDrop(); $("#watchDrop").style.display = "block"; });
-$("#symbol").addEventListener("input", renderWatchBtn);
+$("#symbol").addEventListener("focus", () => { renderWatchDrop(); $("#watchDrop").hidden = false; });
+$("#symbol").addEventListener("input", () => {
+  renderWatchBtn();
+  closeWatchDrop();
+});
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".sym-wrap")) closeWatchDrop();
 });
 
-$("#btnSample").addEventListener("click", () => {
-  state.source = "sample"; state.seed = 7; recompute();
-});
-$("#btnRegen").addEventListener("click", () => {
-  state.source = "sample"; state.seed = 1 + Math.floor(Math.random() * 9999); recompute();
-});
+function loadSample(seed) {
+  const expectedEpoch = beginDataSourceChange();
+  commitDataSource(expectedEpoch, {
+    source: "sample", seed, rows: null, symbol: "SAMPLE", dataInterval: "1d",
+    quoteSrcName: "", quoteNote: "", csvName: "",
+  });
+  $("#interval").value = "1d";
+  recompute(expectedEpoch);
+}
+$("#btnSample").addEventListener("click", () => loadSample(7));
+$("#btnRegen").addEventListener("click", () =>
+  loadSample(1 + Math.floor(Math.random() * 9999)));
 
+let activeCsvReader = null;
 $("#fileCsv").addEventListener("change", async (e) => {
   const f = e.target.files[0];
   if (!f) return;
+  const interval = $("#interval").value;
+  const expectedEpoch = beginDataSourceChange();
   const reader = new FileReader();
+  activeCsvReader = reader;
   reader.onload = async () => {
+    if (activeCsvReader !== reader || expectedEpoch !== dataSourceEpoch) return;
+    const request = beginRequest("csv");
     try {
       const r = await fetch("/api/parse_csv", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ csv: reader.result }),
+        signal: request.signal,
       });
       const d = await r.json();
-      if (d.error) throw new Error(d.error);
-      state.source = "csv";
-      state.rows = d.rows;
-      state.csvName = f.name;
-      await recompute();
+      if (!isCurrentRequest(request) || expectedEpoch !== dataSourceEpoch) return;
+      if (!r.ok || !d || typeof d !== "object" || d.error) {
+        throw new Error(d?.error || `CSV 服务返回 HTTP ${r.status}`);
+      }
+      if (d.source !== "csv") throw new Error("CSV 响应来源无效");
+      const rows = normalizeRowsPayload(d.rows);
+      if (!commitDataSource(expectedEpoch, {
+        source: "csv", rows, csvName: f.name, symbol: "CSV", dataInterval: interval,
+        quoteSrcName: "", quoteNote: "",
+      })) return;
+      await recompute(expectedEpoch);
     } catch (err) {
+      if (isAbortError(err) || !isCurrentRequest(request) || expectedEpoch !== dataSourceEpoch) return;
       toast("CSV 解析失败: " + (err.message || err));
+    } finally {
+      finishRequest(request);
+      if (activeCsvReader === reader) activeCsvReader = null;
     }
+  };
+  reader.onerror = () => {
+    if (activeCsvReader !== reader || expectedEpoch !== dataSourceEpoch) return;
+    activeCsvReader = null;
+    toast("CSV 文件读取失败");
+  };
+  reader.onabort = () => {
+    if (activeCsvReader === reader) activeCsvReader = null;
   };
   reader.readAsText(f);
   e.target.value = "";
@@ -896,31 +1552,65 @@ $("#fileCsv").addEventListener("change", async (e) => {
 let btChart = null;
 const btOverlay = $("#btOverlay");
 
-$("#btnBacktest").addEventListener("click", () => {
-  btOverlay.style.display = "block";
+function closeBacktest() {
+  closeDialog(btOverlay);
+  cancelRequest("backtest");
+  cancelRequest("compare");
+}
+
+function clearBacktestResults(message = "尚未回测") {
+  $("#btStrat").classList.remove("is-error");
+  const placeholder = document.createElement("div");
+  placeholder.className = "muted";
+  placeholder.textContent = message;
+  $("#btStrat").replaceChildren(placeholder);
+  $("#btEvent").replaceChildren();
+  $("#btSplit").replaceChildren();
+  if (btChart) btChart.clear();
+}
+
+function setBacktestError(message) {
+  clearBacktestResults(message);
+  $("#btStrat").classList.add("is-error");
+}
+
+function updateBacktestTitle() {
   $("#btTitle").textContent = (state.symbol || "") + " · " + state.version +
     ($("#btYears").value ? " · 近" + $("#btYears").value + "年" : " · 全部");
+}
+
+$("#btnBacktest").addEventListener("click", () => {
+  openDialog(btOverlay, $("#btPanel"), $("#btnBacktest"));
+  updateBacktestTitle();
   runBacktest();
 });
-$("#btClose").addEventListener("click", () => (btOverlay.style.display = "none"));
-btOverlay.addEventListener("click", (e) => { if (e.target === btOverlay) btOverlay.style.display = "none"; });
+$("#btClose").addEventListener("click", closeBacktest);
+btOverlay.addEventListener("click", (e) => { if (e.target === btOverlay) closeBacktest(); });
 $("#btRun").addEventListener("click", runBacktest);
-$("#btYears").addEventListener("change", runBacktest);
+$("#btYears").addEventListener("change", () => {
+  invalidateReports();
+  runBacktest();
+});
+$("#btCost").addEventListener("input", () => invalidateReports());
+$("#btHold").addEventListener("input", () => invalidateReports());
 
 async function runBacktest() {
   if (!state.data && !state.rows && state.source !== "sample") {
-    $("#btStrat").innerHTML = '<div class="muted">请先加载数据</div>';
+    setBacktestError("请先加载数据");
     return;
   }
-  $("#btStrat").innerHTML = '<div class="muted">回测计算中…</div>';
-  $("#btTitle").textContent = (state.symbol || "") + " · " + state.version +
-    ($("#btYears").value ? " · 近" + $("#btYears").value + "年" : " · 全部");
+  const expectedReportEpoch = reportEpoch;
+  const request = beginRequest("backtest");
+  $("#btStrat").classList.remove("is-error");
+  clearBacktestResults("回测计算中…");
+  updateBacktestTitle();
   const body = {
     params: readParams(),
     version: state.version,
-    years: parseFloat($("#btYears").value) || null,
-    cost: (parseFloat($("#btCost").value) || 0.1) / 100,
-    max_hold: parseInt($("#btHold").value) || null,
+    years: readFiniteNumber("#btYears"),
+    cost: readFiniteNumber("#btCost", 0.1) / 100,
+    max_hold: readFiniteNumber("#btHold"),
+    interval: state.dataInterval,
   };
   if (state.source === "sample") { body.source = "sample"; body.seed = state.seed; }
   else { body.source = "rows"; body.rows = state.rows; }
@@ -928,19 +1618,26 @@ async function runBacktest() {
     const r = await fetch("/api/backtest", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: request.signal,
     });
     const d = await r.json();
+    if (!isCurrentRequest(request) || expectedReportEpoch !== reportEpoch) return;
     if (d.error) throw new Error(d.error);
     renderBacktest(d);
   } catch (e) {
-    $("#btStrat").innerHTML = "";
-    toast("回测失败: " + (e.message || e));
+    if (isAbortError(e) || !isCurrentRequest(request) || expectedReportEpoch !== reportEpoch) return;
+    const message = "回测失败: " + (e.message || e);
+    setBacktestError("回测失败，请检查数据与参数");
+    toast(message);
+  } finally {
+    finishRequest(request);
   }
 }
 
 const fmtPct = (v, sign = false) =>
   v == null ? "--" : (sign && v > 0 ? "+" : "") + v + "%";
-const fmtSt = (st) => (st && st.n ? `${st.win}% / ${st.mean > 0 ? "+" : ""}${st.mean}%` : "--");
+const fmtSt = (st) => (st && st.n && st.excess != null
+  ? `${st.win}% / ${st.excess > 0 ? "+" : ""}${st.excess}%` : "--");
 
 function renderBacktest(d) {
   /* 策略对比表 */
@@ -948,7 +1645,7 @@ function renderBacktest(d) {
     '<th>交易</th><th>胜率</th><th>均笔</th><th>均持仓</th><th>仓位</th></tr>';
   for (const s of d.strategies) {
     const isBh = s.name.startsWith("基准");
-    html += `<tr${isBh ? ' style="color:#9aa4b0"' : ""}><td>${s.name}</td>` +
+    html += `<tr${isBh ? ' style="color:#9aa4b0"' : ""}><td>${esc(s.name)}</td>` +
       `<td class="${s.total >= 0 ? "pos" : "neg"}">${fmtPct(s.total, true)}</td>` +
       `<td>${fmtPct(s.cagr)}</td><td class="neg">${fmtPct(s.mdd)}</td>` +
       `<td>${s.sharpe ?? "--"}</td><td>${s.trades}</td>` +
@@ -978,8 +1675,8 @@ function renderBacktest(d) {
     tooltip: { trigger: "axis",
       formatter: (ps) => {
         const i = ps[0].dataIndex;
-        return `${d.dates[i]}<br>` + ps.map(p =>
-          `${p.marker}${p.seriesName}: ${(p.value[1] * 100).toFixed(0)}%`).join("<br>");
+        return `${esc(d.dates[i])}<br>` + ps.map(p =>
+          `${p.marker}${esc(p.seriesName)}: ${(p.value[1] * 100).toFixed(0)}%`).join("<br>");
       } },
     xAxis: { type: "value", min: 0, max: d.dates.length - 1,
       axisLabel: { color: "#7d8590", formatter: (v) => d.dates[Math.round(v)]?.slice(0, 7) || "" },
@@ -991,21 +1688,38 @@ function renderBacktest(d) {
   setTimeout(() => btChart.resize(), 60);
 
   /* 事件研究表 */
-  const hs = ["3", "5", "10", "20"];
-  let ev = '<table><tr><th>信号</th><th>样本</th><th colspan="2">3日</th><th colspan="2">5日</th>' +
-    '<th colspan="2">10日</th><th colspan="2">20日</th></tr>' +
-    '<tr><th></th><th></th>' + hs.map(() => "<th>胜率/均值</th><th>基线</th>").join("") + "</tr>";
+  const hs = Object.keys(d.events.find((row) => row.horizons)?.horizons || {});
+  const periodLabel = d.timeframe?.period_label || "日";
+  const formatHorizon = (h) => /^\d/.test(periodLabel)
+    ? `${h}×${periodLabel}` : `${h}${periodLabel}`;
+  const splitHorizon = d.events.find((row) => row.split)?.split?.horizon ?? 5;
+  $("#btEventMethod").textContent =
+    `(下一根 K 线开盘入场毛收益; 单元格 = 胜率 / 相对同期基线超额 / HAC t/q; 单位=${periodLabel})`;
+  $("#btSplitMethod").textContent =
+    `(前60% vs 后40% 的 ${formatHorizon(splitHorizon)}远期; 边界窗口不跨样本)`;
+  let ev = '<table><tr><th>信号</th><th>触发数</th>' +
+    hs.map((h) => `<th colspan="2">${esc(formatHorizon(h))}</th>`).join("") + '</tr>' +
+    '<tr><th></th><th></th>' + hs.map(() => "<th>胜率/超额</th><th>基线</th>").join("") + "</tr>";
   for (const row of d.events) {
     const isBase = row.signal === "_BASE";
-    ev += `<tr${isBase ? ' style="color:#9aa4b0"' : ""}><td>${row.label}</td><td>${row.count}</td>`;
+    ev += `<tr${isBase ? ' style="color:#9aa4b0"' : ""}><td>${esc(row.label)}</td><td>${row.count}</td>`;
     for (const h of hs) {
       const st = row.horizons[h];
       if (!st || !st.n) { ev += "<td>--</td><td>--</td>"; continue; }
-      const cls = st.mean > 0 ? "pos" : st.mean < 0 ? "neg" : "";
-      const tTxt = st.t != null ? `t=${st.t}` : "";
+      const excess = st.excess;
+      const cls = excess > 0 ? "pos" : excess < 0 ? "neg" : "";
+      const statTxt = [
+        `n=${st.n}`,
+        st.t != null ? `t=${st.t}` : "",
+        st.q != null ? `q=${st.q}` : "",
+      ].filter(Boolean).join(" · ");
+      const excessTxt = excess == null ? "--" : `${excess > 0 ? "+" : ""}${excess}%`;
       const baseCell = isBase ? '<td class="muted">—</td>'
         : `<td class="muted">${st.base_win}% / ${st.base_mean > 0 ? "+" : ""}${st.base_mean}%</td>`;
-      ev += `<td class="${cls}">${st.win}% / ${st.mean > 0 ? "+" : ""}${st.mean}%<br><span class="muted">${tTxt}</span></td>${baseCell}`;
+      const mainCell = isBase
+        ? `${st.win}% / ${st.mean > 0 ? "+" : ""}${st.mean}%`
+        : `${st.win}% / ${excessTxt}`;
+      ev += `<td class="${cls}">${mainCell}<br><span class="muted">${statTxt}</span></td>${baseCell}`;
     }
     ev += "</tr>";
   }
@@ -1013,16 +1727,19 @@ function renderBacktest(d) {
   $("#btEvent").innerHTML = ev;
 
   /* 分段一致性表 */
-  let sp = '<table><tr><th>信号</th><th>前60% (5日)</th><th>后40% (5日)</th><th>结论</th></tr>';
+  const splitLabel = esc(formatHorizon(splitHorizon));
+  let sp = `<table><tr><th>信号</th><th>前60% 胜率/超额 (${splitLabel})</th>` +
+    `<th>后40% 胜率/超额 (${splitLabel})</th><th>结论</th></tr>`;
   for (const row of d.events) {
-    if (!row.split5) continue;
-    const i = row.split5.in_sample, o = row.split5.out_sample;
+    const split = row.split || row.split5;
+    if (!split) continue;
+    const i = split.in_sample, o = split.out_sample;
     let verdict = "--";
-    if (i && i.n && o && o.n) {
-      verdict = i.mean > 0 && o.mean > 0 ? "✓ 两段均为正"
-        : i.mean < 0 && o.mean < 0 ? "✓ 两段均为负" : "✗ 方向不一致";
+    if (i && i.n && o && o.n && i.excess != null && o.excess != null) {
+      verdict = i.excess > 0 && o.excess > 0 ? "✓ 两段均跑赢基线"
+        : i.excess < 0 && o.excess < 0 ? "✓ 两段均跑输基线" : "✗ 超额方向不一致";
     }
-    sp += `<tr><td>${row.label}</td><td>${fmtSt(i)}</td><td>${fmtSt(o)}</td>` +
+    sp += `<tr><td>${esc(row.label)}</td><td>${fmtSt(i)}</td><td>${fmtSt(o)}</td>` +
       `<td>${verdict}</td></tr>`;
   }
   sp += "</table>";
@@ -1033,19 +1750,23 @@ function renderBacktest(d) {
 $("#btCompare").addEventListener("click", runCompare);
 async function runCompare() {
   if (state.source !== "sample" && !state.rows) { toast("请先加载数据"); return; }
+  const expectedReportEpoch = reportEpoch;
+  const request = beginRequest("compare");
   $("#btCompareDiv").innerHTML = '<div class="muted">双版本回测中…</div>';
   const mk = async (v) => {
     const body = {
       params: readParams(), version: v,
-      years: parseFloat($("#btYears").value) || null,
-      cost: (parseFloat($("#btCost").value) || 0.1) / 100,
-      max_hold: parseInt($("#btHold").value) || null,
+      years: readFiniteNumber("#btYears"),
+      cost: readFiniteNumber("#btCost", 0.1) / 100,
+      max_hold: readFiniteNumber("#btHold"),
+      interval: state.dataInterval,
     };
     if (state.source === "sample") { body.source = "sample"; body.seed = state.seed; }
     else { body.source = "rows"; body.rows = state.rows; }
     const r = await fetch("/api/backtest", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: request.signal,
     });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
@@ -1053,10 +1774,15 @@ async function runCompare() {
   };
   try {
     const [a, b] = await Promise.all([mk("v3"), mk("v4")]);
+    if (!isCurrentRequest(request) || expectedReportEpoch !== reportEpoch) return;
     renderCompare(a, b);
   } catch (e) {
-    $("#btCompareDiv").innerHTML = "";
+    if (isAbortError(e) || !isCurrentRequest(request) || expectedReportEpoch !== reportEpoch) return;
+    request.controller.abort();
+    $("#btCompareDiv").textContent = "对比回测失败，请检查数据与参数";
     toast("对比回测失败: " + (e.message || e));
+  } finally {
+    finishRequest(request);
   }
 }
 
@@ -1073,7 +1799,7 @@ function renderCompare(a, b) {
     const isBh = s.name.startsWith("基准");
     const delta = (s.total != null && sb.total != null) ? (sb.total - s.total) : null;
     const cls = (v) => v == null ? "" : v >= 0 ? "pos" : "neg";
-    html += `<tr${isBh ? ' style="color:#9aa4b0"' : ""}><td>${s.name}</td>` +
+    html += `<tr${isBh ? ' style="color:#9aa4b0"' : ""}><td>${esc(s.name)}</td>` +
       `<td class="${cls(s.total)}">${fmtPct(s.total, true)}</td>` +
       `<td class="${cls(sb.total)}">${fmtPct(sb.total, true)}</td>` +
       `<td class="${cls(delta)}">${delta == null ? "--" : (delta > 0 ? "+" : "") + delta.toFixed(1) + "%"}</td>` +
@@ -1093,26 +1819,55 @@ const scrOverlay = $("#scrOverlay");
 let scrMeta = null;
 
 $("#btnScreener").addEventListener("click", async () => {
-  scrOverlay.style.display = "block";
+  openDialog(scrOverlay, $("#scrPanel"), $("#btnScreener"));
   if (!scrMeta) {
+    const request = beginRequest("screenerMeta");
     try {
-      const r = await fetch("/api/screener/meta");
-      scrMeta = await r.json();
+      const r = await fetch("/api/screener/meta", { signal: request.signal });
+      const data = await r.json();
+      if (!isCurrentRequest(request)) return;
+      if (data.error) throw new Error(data.error);
+      const strategyIds = new Set();
+      if (!Array.isArray(data.strategies) || !data.strategies.length ||
+          !data.strategies.every((strategy) => {
+            const id = typeof strategy?.id === "string" ? strategy.id.trim() : "";
+            const name = typeof strategy?.name === "string" ? strategy.name.trim() : "";
+            const valid = id && id === strategy.id && !strategyIds.has(id) &&
+              name && name === strategy.name &&
+              Number.isInteger(strategy.n_conditions) && strategy.n_conditions >= 0 &&
+              Number.isFinite(strategy.min_mktcap_cny) && strategy.min_mktcap_cny >= 0;
+            strategyIds.add(id);
+            return Boolean(valid);
+          })) {
+        throw new Error("策略元数据格式无效");
+      }
       const sel = $("#scrStrategy");
-      sel.innerHTML = scrMeta.strategies.map(v =>
-        `<option value="${v.id}">${v.name} (${v.n_conditions}条·市值≥${Math.round(v.min_mktcap_cny/1e8)}亿)</option>`).join("");
+      sel.innerHTML = data.strategies.map(v =>
+        `<option value="${esc(v.id)}">${esc(v.name)} (${Number(v.n_conditions)}条·市值≥${Math.round(v.min_mktcap_cny/1e8)}亿)</option>`).join("");
+      scrMeta = data;
       $("#scrStatus").textContent = "选择策略与市场后运行";
     } catch (e) {
+      if (isAbortError(e) || !isCurrentRequest(request)) return;
       $("#scrStatus").textContent = "策略加载失败";
+    } finally {
+      finishRequest(request);
     }
   }
 });
-$("#scrClose").addEventListener("click", () => (scrOverlay.style.display = "none"));
-scrOverlay.addEventListener("click", (e) => { if (e.target === scrOverlay) scrOverlay.style.display = "none"; });
+function closeScreener() {
+  closeDialog(scrOverlay);
+  cancelRequest("screenerMeta");
+  cancelRequest("screener");
+}
+$("#scrClose").addEventListener("click", closeScreener);
+scrOverlay.addEventListener("click", (e) => { if (e.target === scrOverlay) closeScreener(); });
 $("#scrRun").addEventListener("click", runScreenJob);
 
 async function runScreenJob() {
-  if (state.source !== "sample" && !state.rows && state.source !== "quote") { /* 选股不依赖图表数据 */ }
+  if (!scrMeta || !$("#scrStrategy").value) {
+    $("#scrStatus").textContent = "策略尚未加载完成";
+    return;
+  }
   $("#scrStatus").textContent = "选股计算中… (财报数据逐只拉取, 约 2~4 秒/只, 请耐心等待)";
   $("#scrResult").innerHTML = "";
   const symbols = $("#scrSymbols").value.trim();
@@ -1121,29 +1876,37 @@ async function runScreenJob() {
     market: $("#scrMarket").value,
     symbols: symbols || null,
   };
+  const request = beginRequest("screener");
   try {
     const r = await fetch("/api/screener", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: request.signal,
     });
     const d = await r.json();
+    if (!isCurrentRequest(request)) return;
     if (d.error) throw new Error(d.error);
+    if (!Array.isArray(d.results)) throw new Error("选股响应格式无效");
     renderScreen(d);
     $("#scrStatus").textContent = `通过 ${d.n_passed}/${d.results.length} · ${d.results.length} 只候选`;
   } catch (e) {
+    if (isAbortError(e) || !isCurrentRequest(request)) return;
     $("#scrStatus").textContent = "选股失败";
     toast("选股失败: " + (e.message || e));
+  } finally {
+    finishRequest(request);
   }
 }
 
 function renderScreen(d) {
-  const rows = [...d.results].sort((a, b) => (b.passed - a.passed) || (b.n_ok - a.n_ok));
+  const rows = [...d.results].sort((a, b) =>
+    (Number(Boolean(b.passed)) - Number(Boolean(a.passed))) || ((b.n_ok || 0) - (a.n_ok || 0)));
   let html = `<div class="sec-h">筛选结果 <span class="muted">通过 ${d.n_passed}/${d.results.length}</span></div>`;
   html += '<table><tr><th>代码</th><th>名称</th><th>市值(亿CNY)</th><th>通过条件</th><th>结论</th></tr>';
   for (const r of rows) {
     const mc = r.market_cap_cny ? (r.market_cap_cny / 1e8).toFixed(0) : "--";
     html += `<tr><td>${esc(r.symbol)}</td><td style="text-align:left">${esc(r.name) || "--"}</td>` +
-      `<td>${mc}</td><td>${r.n_ok}/${r.n_total}</td>` +
+      `<td>${mc}</td><td>${r.n_ok ?? 0}/${r.n_total ?? 0}</td>` +
       `<td class="${r.passed ? "pass" : "fail"}">${r.passed ? "✓ 通过" : "✗"}</td></tr>`;
   }
   html += "</table>";
@@ -1151,12 +1914,13 @@ function renderScreen(d) {
   for (const r of rows) {
     html += `<details><summary style="cursor:pointer;font-size:12px;padding:3px 0">` +
       `<b>${esc(r.symbol)}</b> ${esc(r.name) || ""} <span class="${r.passed ? "pass" : "fail"}">` +
-      `${r.passed ? "通过" : r.n_ok + "/" + r.n_total}</span>${r.note ? ' <span class="muted">' + r.note + "</span>" : ""}</summary>` +
+      `${r.passed ? "通过" : (r.n_ok ?? 0) + "/" + (r.n_total ?? 0)}</span>` +
+      `${r.note ? ' <span class="muted">' + esc(r.note) + "</span>" : ""}</summary>` +
       '<table class="cond-tbl"><tr><th>条件</th><th>当前值</th><th>阈值</th><th>判定</th><th>备注</th></tr>';
     for (const c of r.conditions) {
-      html += `<tr><td>${c.text}</td><td>${c.value == null ? "--" : c.value}</td>` +
-        `<td>${c.threshold}</td><td class="${c.passed ? "pass" : "fail"}">${c.passed ? "✓" : "✗"}</td>` +
-        `<td class="muted">${c.note || ""}</td></tr>`;
+      html += `<tr><td>${esc(c.text)}</td><td>${c.value == null ? "--" : esc(c.value)}</td>` +
+        `<td>${esc(c.threshold)}</td><td class="${c.passed ? "pass" : "fail"}">${c.passed ? "✓" : "✗"}</td>` +
+        `<td class="muted">${esc(c.note)}</td></tr>`;
     }
     html += "</table></details>";
   }
@@ -1166,23 +1930,28 @@ function renderScreen(d) {
 /* ============================== 机会雷达 ============================== */
 const radOverlay = $("#radOverlay");
 const RADAR_MKT_NAME = { us: "美股", hk: "港股", cn: "A股" };
-const esc = (s) => String(s == null ? "" : s)
-  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");  // 名称/代码来自外部数据源, 防 XSS
 let radarData = null;   // 最近一次 /api/radar 快照 (各市场 job + cache)
 let radarTimer = null;
 
 function stopRadarPoll() {
   if (radarTimer) { clearTimeout(radarTimer); radarTimer = null; }
+  cancelRequest("radarPoll");
 }
 
 async function pollRadar() {
+  const request = beginRequest("radarPoll");
   try {
-    const r = await fetch("/api/radar");  // 过期/缺失市场服务端自动后台重扫
-    radarData = (await r.json()).markets;
+    const r = await fetch("/api/radar", { signal: request.signal });  // 过期/缺失市场服务端自动后台重扫
+    const data = await r.json();
+    if (!isCurrentRequest(request)) return;
+    if (data.error || !data.markets) throw new Error(data.error || "雷达响应格式无效");
+    radarData = data.markets;
   } catch (e) {
+    if (isAbortError(e) || !isCurrentRequest(request)) return;
     $("#radStatus").textContent = "加载失败";
     return;
+  } finally {
+    finishRequest(request);
   }
   if (radOverlay.style.display === "none") return;
   renderRadar();
@@ -1195,14 +1964,22 @@ async function pollRadar() {
 async function startRadarScan(market) {
   stopRadarPoll();
   $("#radStatus").textContent = "扫描已发起, 服务端后台进行中…";
+  const request = beginRequest("radarScan");
   try {
-    await fetch("/api/radar/scan", {
+    const response = await fetch("/api/radar/scan", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ market }),
+      signal: request.signal,
     });
+    const data = await response.json();
+    if (!isCurrentRequest(request)) return;
+    if (data.error) throw new Error(data.error);
   } catch (e) {
+    if (isAbortError(e) || !isCurrentRequest(request)) return;
     $("#radStatus").textContent = "扫描发起失败";
     return;
+  } finally {
+    finishRequest(request);
   }
   radarTimer = setTimeout(pollRadar, 500);
 }
@@ -1210,6 +1987,10 @@ async function startRadarScan(market) {
 function renderRadar() {
   const wrap = $("#radResult");
   if (!radarData) { wrap.innerHTML = '<div class="muted">加载中…</div>'; return; }
+  const focusedRow = wrap.contains(document.activeElement)
+    ? document.activeElement.closest("tr[data-code]") : null;
+  const focusedKey = focusedRow
+    ? { code: focusedRow.dataset.code, market: focusedRow.dataset.market } : null;
   const mkt = $("#radMarket").value;
   const win = +$("#radWindow").value;
   const mkts = mkt === "all" ? ["us", "hk", "cn"] : [mkt];
@@ -1237,7 +2018,7 @@ function renderRadar() {
     if (!cache) {
       html += b.scanning
         ? '<div class="muted">首次扫描进行中, 约 1~3 分钟/市场, 可先看其他市场…</div>'
-        : '<div class="muted">无缓存, 点击 "⟳ 重新扫描" 开始</div>';
+        : '<div class="muted">无缓存，点击“重新扫描”开始</div>';
       continue;
     }
     const hits = cache.results.filter((r) => r.signals.some((s) => s.days_ago < win));
@@ -1250,15 +2031,16 @@ function renderRadar() {
     for (const r of hits) {
       const sigs = r.signals.filter((s) => s.days_ago < win);
       const sigHtml = sigs.map((s) =>
-        `<span class="badge ${s.type === "B买" ? "b-buy" : "b-juefan"}">${s.type}</span>` +
-        ` <span class="muted" style="font-size:11px">${s.date}</span>`).join("<br>");
+        `<span class="badge ${s.type === "B买" ? "b-buy" : "b-juefan"}">${esc(s.type)}</span>` +
+        ` <span class="muted" style="font-size:11px">${esc(s.date)}</span>`).join("<br>");
       const chgCls = r.chg_pct == null ? "muted" : (r.chg_pct >= 0 ? "rad-up" : "rad-down");
-      html += `<tr data-code="${esc(r.code)}" data-market="${r.market}">` +
-        `<td><span class="rad-mkt">${RADAR_MKT_NAME[r.market]}</span></td>` +
-        `<td><b>${esc(r.code)}</b></td><td class="tname">${esc(r.name) || "--"}</td>` +
+      html += `<tr data-code="${esc(r.code)}" data-market="${esc(r.market)}">` +
+        `<td><span class="rad-mkt">${esc(RADAR_MKT_NAME[r.market] || r.market)}</span></td>` +
+        `<td><button class="rad-symbol" type="button" aria-label="加载行情 ${esc(r.code)}">` +
+        `${esc(r.code)}</button></td><td class="tname">${esc(r.name) || "--"}</td>` +
         `<td>${num(r.close)}</td>` +
         `<td class="${chgCls}">${r.chg_pct == null ? "--" : r.chg_pct.toFixed(2)}</td>` +
-        `<td>${sigHtml}</td><td class="muted">${r.date || "--"}</td></tr>`;
+        `<td>${sigHtml}</td><td class="muted">${r.date ? esc(r.date) : "--"}</td></tr>`;
     }
     html += "</tbody></table>";
   }
@@ -1266,30 +2048,38 @@ function renderRadar() {
   wrap.querySelectorAll("tbody tr").forEach((tr) => {
     tr.addEventListener("click", () => openRadarSymbol(tr.dataset.code));
   });
+  if (focusedKey) {
+    const row = [...wrap.querySelectorAll("tr[data-code]")].find((candidate) =>
+      candidate.dataset.code === focusedKey.code && candidate.dataset.market === focusedKey.market);
+    (row?.querySelector(".rad-symbol") || $("#radPanel")).focus();
+  }
   $("#radStatus").textContent = scanning ? "扫描中…" : "就绪";
 }
 
 function openRadarSymbol(code) {
-  radOverlay.style.display = "none";
+  closeDialog(radOverlay, false);
   stopRadarPoll();
-  $("#symbol").value = code;
+  cancelRequest("radarScan");
+  const symbolInput = $("#symbol");
+  symbolInput.value = code;
   $("#interval").value = "1d";
+  symbolInput.focus();
+  closeWatchDrop();
   loadQuote();
 }
 
 $("#btnRadar").addEventListener("click", () => {
-  radOverlay.style.display = "block";
+  openDialog(radOverlay, $("#radPanel"), $("#btnRadar"));
   pollRadar();
 });
-$("#radClose").addEventListener("click", () => {
-  radOverlay.style.display = "none";
+function closeRadar() {
+  closeDialog(radOverlay);
   stopRadarPoll();
-});
+  cancelRequest("radarScan");
+}
+$("#radClose").addEventListener("click", closeRadar);
 radOverlay.addEventListener("click", (e) => {
-  if (e.target === radOverlay) {
-    radOverlay.style.display = "none";
-    stopRadarPoll();
-  }
+  if (e.target === radOverlay) closeRadar();
 });
 $("#radScan").addEventListener("click", () => startRadarScan($("#radMarket").value));
 $("#radMarket").addEventListener("change", renderRadar);
@@ -1298,11 +2088,12 @@ $("#radWindow").addEventListener("change", renderRadar);
 /* ---------- 指标版本切换 ---------- */
 $("#verSel").addEventListener("change", () => {
   state.version = $("#verSel").value;
-  $("#verNote").textContent = VER_NOTES[state.version] || "";
+  $("#verSel").title = VER_NOTES[state.version] || "切换指标版本";
+  invalidateReports("指标版本已变化，请重新运行");
   recompute();
   if (btOverlay.style.display === "block") runBacktest();
 });
-$("#verNote").textContent = VER_NOTES[state.version] || "";
+$("#verSel").title = VER_NOTES[state.version] || "切换指标版本";
 
 /* ============================== 启动: 默认加载 TQQQ 日K ============================== */
 if (localStorage.getItem(WATCH_KEY) == null) setWatch(DEFAULT_WATCH);  // 默认关注列表

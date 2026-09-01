@@ -33,7 +33,7 @@ __all__ = [
     # 富途官方指标扩展: 动量
     "wr", "bias", "mtm", "psy",
     # 富途官方指标扩展: 量能与情绪
-    "vr", "emv", "vpt", "volume_ratio", "arbr", "cr",
+    "vr", "emv", "vpt", "pvt", "volume_ratio", "arbr", "cr",
 ]
 
 
@@ -96,7 +96,10 @@ def mfi(h: pd.Series, l: pd.Series, c: pd.Series, v: pd.Series, n: int = 14) -> 
     pos_sum = pos.rolling(int(n), min_periods=int(n)).sum()
     neg_sum = neg.rolling(int(n), min_periods=int(n)).sum()
     ratio = safe_div(pos_sum, neg_sum)
-    return 100.0 - 100.0 / (1.0 + ratio)
+    out = 100.0 - 100.0 / (1.0 + ratio)
+    out = out.mask((pos_sum > 0) & (neg_sum == 0), 100.0)
+    out = out.mask((pos_sum == 0) & (neg_sum > 0), 0.0)
+    return out.mask((pos_sum == 0) & (neg_sum == 0), 50.0)
 
 
 @register_indicator("obv")
@@ -147,17 +150,25 @@ def rolling_pct_rank(x: pd.Series, n: int = 250) -> pd.Series:
     """
     x = _as_series(x)
     k = int(n)
+    if k <= 0:
+        raise ValueError("rolling percentile period must be positive")
+    min_valid = min(k, max(3, k // 10))
 
     def _pct(a):
         a = np.asarray(a, dtype=float)
         v = a[-1]
         valid = a[np.isfinite(a)]
-        if valid.size < max(3, k // 10) or not np.isfinite(v):
+        if valid.size < min_valid or not np.isfinite(v):
             return np.nan
-        # 小于 v 的比例 * 100 (与 scipy rankdata 'max' 近似)
-        return float((valid < v).mean() * 100.0)
+        if valid.size == 1:
+            return 50.0
+        # 平均秩映射到 [0, 100]: 最小=0、最大=100、全并列=50。
+        less = int((valid < v).sum())
+        equal = int((valid == v).sum())
+        rank0 = less + (equal - 1) / 2.0
+        return float(rank0 / (valid.size - 1) * 100.0)
 
-    return x.rolling(k, min_periods=max(3, k // 10)).apply(_pct, raw=True)
+    return x.rolling(k, min_periods=min_valid).apply(_pct, raw=True)
 
 
 # ==========================================================================
@@ -235,6 +246,8 @@ def sar(h, l, af_step: float = 0.02, af_max: float = 0.2):
     返回 Series; 上升趋势中 SAR 位于价格下方, 反转时跳转至前极值。
     """
     hi, lo = _as_series(h), _as_series(l)
+    if not hi.index.equals(lo.index):
+        raise ValueError("SAR high and low indexes must match")
     h, l = hi.to_numpy(), lo.to_numpy()
     n = len(h)
     out = np.full(n, np.nan)
@@ -347,15 +360,19 @@ def vr(h, l, c, v, n: int = 26):
 
 @register_indicator("emv")
 def emv(h, l, v, n: int = 14, m: int = 9):
-    """简易波动指标 EMV (成交量以万为单位计, 常数仅影响刻度)。
+    """简易波动指标 EMV；v 为成交额。
 
+    EM = 中间价变动 × 当期振幅 / 成交量; EMV = SUM(EM, n)。
     返回 DataFrame{EMV, EMVMA}。
     """
+    k = int(n)
+    if k <= 0:
+        raise ValueError("EMV period must be positive")
     mid = (h + l) / 2.0
     dist = mid - REF(mid, 1)
-    box = ((h - l) + (h - l).shift(1)) / 2.0
-    raw = safe_div(dist, safe_div(box, 1e4) * v)
-    return pd.DataFrame({"EMV": raw, "EMVMA": MA(raw, m)})
+    raw = safe_div(dist * (h - l), v)
+    emv_value = raw.rolling(k, min_periods=k).sum()
+    return pd.DataFrame({"EMV": emv_value, "EMVMA": MA(emv_value, m)})
 
 
 @register_indicator("vpt")

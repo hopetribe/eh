@@ -2,6 +2,8 @@
 """通用技术指标库测试 (移植自 kk2_indicators 自检 + 注册表)。"""
 import numpy as np
 import pandas as pd
+import subprocess
+import sys
 
 from gcn.core import indicators
 from gcn.core.registry import INDICATORS, list_indicators
@@ -16,6 +18,13 @@ def _mk(n=300, seed=42):
     return h, l, c, v
 
 
+def _finite_values(series):
+    values = series.dropna()
+    assert not values.empty
+    assert np.isfinite(values).all()
+    return values
+
+
 def test_atr_wilder_ewm_equivalence():
     h, l, c, _ = _mk()
     tr = pd.concat([(h - l), (h - c.shift(1)).abs(), (l - c.shift(1)).abs()], axis=1).max(axis=1)
@@ -26,24 +35,35 @@ def test_atr_wilder_ewm_equivalence():
 def test_adx_mfi_value_range():
     h, l, c, v = _mk()
     d = indicators.adx(h, l, c, 14)
-    assert d["ADX"].dropna().between(0, 100).all()
-    assert indicators.mfi(h, l, c, v, 14).dropna().between(0, 100).all()
+    assert _finite_values(d["ADX"]).between(0, 100).all()
+    assert _finite_values(d["PDI"]).between(0, 100).all()
+    assert _finite_values(d["MDI"]).between(0, 100).all()
+    assert _finite_values(indicators.mfi(h, l, c, v, 14)).between(0, 100).all()
 
 
 def test_obv_roc_cci_bollinger():
     h, l, c, v = _mk()
     assert (indicators.obv(c, v).diff().dropna() != 0).any()
-    assert np.isfinite(indicators.roc(c, 10).dropna()).all()
-    assert np.isfinite(indicators.cci(h, l, c, 20).dropna()).all()
+    _finite_values(indicators.roc(c, 10))
+    _finite_values(indicators.cci(h, l, c, 20))
     bb = indicators.bollinger(c, 20, 2)
-    assert (bb["BW"].dropna() >= 0).all()
-    assert bb["PB"].dropna().between(-1, 2).all()
+    assert (_finite_values(bb["BW"]) >= 0).all()
+    assert _finite_values(bb["PB"]).between(-1, 2).all()
 
 
 def test_rolling_pct_rank_range():
     _, _, c, _ = _mk()
     pr = indicators.rolling_pct_rank(c, 100)
-    assert pr.dropna().between(0, 100).all()
+    assert _finite_values(pr).between(0, 100).all()
+
+
+def test_rolling_pct_rank_short_windows_and_ties():
+    assert indicators.rolling_pct_rank(pd.Series([1.0, 2.0]), 1).tolist() == [50.0, 50.0]
+    got = indicators.rolling_pct_rank(pd.Series([1.0, 2.0, 2.0]), 2)
+    assert np.isnan(got.iloc[0])
+    assert got.iloc[1:].tolist() == [100.0, 50.0]
+    assert indicators.rolling_pct_rank(pd.Series([3.0] * 5), 5).iloc[-1] == 50.0
+    assert indicators.rolling_pct_rank(pd.Series(range(1, 6)), 5).iloc[-1] == 100.0
 
 
 def test_registry():
@@ -51,6 +71,17 @@ def test_registry():
         assert name in INDICATORS
         assert callable(INDICATORS[name])
     assert list_indicators() == sorted(list_indicators())
+
+
+def test_registry_is_discoverable_without_importing_indicators_first():
+    code = (
+        "from gcn.core.registry import INDICATORS, get_indicator, list_indicators; "
+        "assert 'pvt' in INDICATORS; assert 'pvt' in list_indicators(); "
+        "assert callable(get_indicator('pvt'))"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "pvt" in indicators.__all__
 
 
 # ---------------- 富途官方指标扩展 ----------------
@@ -73,10 +104,10 @@ def test_bbi_macd_bias_identity():
 def test_kdj_wr_range_and_identity():
     h, l, c, _ = _mk()
     k = indicators.kdj(h, l, c)
-    assert k["K"].dropna().between(-20, 120).all()
+    assert _finite_values(k["K"]).between(-20, 120).all()
     assert np.allclose(k["J"].dropna(), (3 * k["K"] - 2 * k["D"]).dropna())
     w = indicators.wr(h, l, c, 10)
-    assert w.dropna().between(0, 100).all()
+    assert _finite_values(w).between(0, 100).all()
 
 
 def test_sar_trend_side():
@@ -91,24 +122,52 @@ def test_sar_trend_side():
     assert (s_dn.iloc[5:] > dn_c.iloc[5:]).mean() > 0.95  # 下跌: SAR 在上方
 
 
+def test_sar_rejects_misaligned_inputs():
+    h = pd.Series([3.0, 4.0], index=["a", "b"])
+    l = pd.Series([1.0, 2.0], index=["b", "c"])
+    try:
+        indicators.sar(h, l)
+    except ValueError as exc:
+        assert "index" in str(exc).lower()
+    else:
+        raise AssertionError("SAR must reject high/low values with different indexes")
+
+
+def test_mfi_handles_one_sided_and_flat_money_flow():
+    volume = pd.Series([100.0] * 6)
+
+    up = pd.Series(range(1, 7), dtype=float)
+    mfi_up = indicators.mfi(up + 1, up - 1, up, volume, 3)
+    assert mfi_up.iloc[2:].eq(100.0).all()
+
+    down = pd.Series(range(6, 0, -1), dtype=float)
+    mfi_down = indicators.mfi(down + 1, down - 1, down, volume, 3)
+    assert mfi_down.iloc[2:].eq(0.0).all()
+
+    flat = pd.Series([5.0] * 6)
+    mfi_flat = indicators.mfi(flat + 1, flat - 1, flat, volume, 3)
+    assert mfi_flat.iloc[2:].eq(50.0).all()
+
+
 def test_trix_dma_mtm_psy():
     _, _, c, _ = _mk()
-    assert np.isfinite(indicators.trix(c, 12).dropna()).all()
+    _finite_values(indicators.trix(c, 12))
     d = indicators.dma(c)
     want = c.rolling(10).mean() - c.rolling(50).mean()
     assert np.allclose(d["DIF"].dropna(), want.dropna())
     m = indicators.mtm(c)
     assert np.allclose(m["MTMMA"].dropna(), m["MTM"].rolling(6).mean().dropna())
     p = indicators.psy(c, 12)
-    assert p.dropna().between(0, 100).all()
+    assert _finite_values(p).between(0, 100).all()
 
 
 def test_vr_emv_vpt_volume_ratio():
     h, l, c, v = _mk()
     r = indicators.vr(h, l, c, v, 26)
-    assert r.dropna().between(0, 1e5).all()
+    assert _finite_values(r).between(0, 1e5).all()
     e = indicators.emv(h, l, v)
-    assert np.isfinite(e["EMV"].dropna()).all()
+    _finite_values(e["EMV"])
+    _finite_values(e["EMVMA"])
     vpt = indicators.vpt(c, v)
     # VPT 为累计量, 与分段和一致
     seg = vpt.iloc[10] + (v * c.pct_change()).iloc[11:21].sum()
@@ -118,12 +177,28 @@ def test_vr_emv_vpt_volume_ratio():
     assert np.allclose(vr_.dropna(), want.dropna())
 
 
+def test_emv_uses_requested_sum_period_and_signal_average():
+    h = pd.Series([11.0, 12.0, 14.0, 15.0, 17.0, 18.0])
+    l = pd.Series([9.0, 10.0, 11.0, 13.0, 14.0, 16.0])
+    v = pd.Series([10000.0] * len(h))
+    raw = ((h + l) / 2.0).diff() * (h - l) / v
+    want_emv = raw.rolling(3, min_periods=3).sum()
+    want_ma = want_emv.rolling(2, min_periods=2).mean()
+
+    got = indicators.emv(h, l, v, n=3, m=2)
+    _finite_values(got["EMV"])
+    _finite_values(got["EMVMA"])
+    assert np.allclose(got["EMV"], want_emv, equal_nan=True)
+    assert np.allclose(got["EMVMA"], want_ma, equal_nan=True)
+    assert not got["EMV"].equals(indicators.emv(h, l, v, n=4, m=2)["EMV"])
+
+
 def test_arbr_cr():
     h, l, c, v = _mk()
     import pandas as pd
     o = (h + l + c) / 3.0  # 用典型价代替开盘价做口径验证
     ab = indicators.arbr(h, l, c, o, 26)
-    assert ab["AR"].dropna().between(0, 1e4).all()
-    assert ab["BR"].dropna().between(0, 1e4).all()
+    assert _finite_values(ab["AR"]).between(0, 1e4).all()
+    assert _finite_values(ab["BR"]).between(0, 1e4).all()
     crv = indicators.cr(h, l, c, 26)
-    assert crv.dropna().ge(0).all()
+    assert _finite_values(crv).ge(0).all()

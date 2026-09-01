@@ -8,14 +8,11 @@
 from __future__ import annotations
 
 import time
-import warnings
 
 import numpy as np
 import pandas as pd
 
 from gcn.data.service import fetch_quote
-
-warnings.filterwarnings("ignore")
 
 K_NET_INCOME = ("NetIncome", "Net Income")
 K_REVENUE = ("TotalRevenue", "Total Revenue")
@@ -57,6 +54,79 @@ def _cagr(first, last, years):
     if not first or not last or first <= 0 or last <= 0 or years <= 0:
         return np.nan
     return (last / first) ** (1.0 / years) - 1.0
+
+
+def _gross_margin_history(revenue: pd.Series, gross_profit: pd.Series,
+                          years: int = 3) -> list[float]:
+    values = []
+    for col in revenue.index:
+        if col in gross_profit.index:
+            ratio = _div(gross_profit[col], revenue[col])
+            if np.isfinite(ratio):
+                values.append(float(ratio))
+    return values[:years]
+
+
+def _completed_dividend_yields(dividends: pd.Series, prices: pd.DataFrame,
+                               as_of=None, limit: int = 7) -> list[float]:
+    """Annual dividend yields for completed calendar years only."""
+    if dividends is None or prices.empty or "close" not in prices:
+        return []
+    reference = pd.Timestamp.now() if as_of is None else pd.Timestamp(as_of)
+    div_year = dividends.groupby(dividends.index.year).sum()
+    close_year = prices["close"].groupby(prices.index.year).last()
+    values = []
+    for year in sorted((y for y in close_year.index if int(y) < reference.year), reverse=True):
+        ratio = _div(float(div_year.get(year, 0.0)), float(close_year[year]))
+        if np.isfinite(ratio):
+            values.append(float(ratio))
+    return values[:limit]
+
+
+def _sales_inventory_growth_spread(revenue: pd.Series,
+                                   inventory: pd.Series) -> float:
+    if len(revenue) < 2:
+        return np.nan
+    latest, previous = list(revenue.index)[:2]
+    if latest not in inventory.index or previous not in inventory.index:
+        return np.nan
+    sales_growth = _div(revenue[latest], revenue[previous]) - 1
+    inventory_growth = _div(inventory[latest], inventory[previous]) - 1
+    if not np.isfinite(sales_growth) or not np.isfinite(inventory_growth):
+        return np.nan
+    return float(sales_growth - inventory_growth)
+
+
+def _davis_double_play(prices: pd.DataFrame, eps_history: pd.Series) -> float:
+    if prices.empty or len(eps_history) < 2:
+        return np.nan
+    latest, previous = list(eps_history.index)[:2]
+    latest_close = prices.loc[prices.index.year == latest.year, "close"]
+    previous_close = prices.loc[prices.index.year == previous.year, "close"]
+    if latest_close.empty or previous_close.empty:
+        return np.nan
+    eps_factor = _div(eps_history[latest], eps_history[previous])
+    latest_pe = _div(float(latest_close.iloc[-1]), eps_history[latest])
+    previous_pe = _div(float(previous_close.iloc[-1]), eps_history[previous])
+    multiplier = eps_factor * _div(latest_pe, previous_pe)
+    return float(multiplier) if np.isfinite(multiplier) else np.nan
+
+
+def _historical_pe_percentile(prices: pd.DataFrame, eps_history: pd.Series,
+                              current_pe, years: int = 5) -> float:
+    """Percentile of current PE against same-period annual price/EPS pairs."""
+    if prices.empty or not np.isfinite(_div(current_pe, 1)) or current_pe <= 0:
+        return np.nan
+    historical = []
+    for period in list(eps_history.index)[:years]:
+        eps_value = eps_history[period]
+        closes = prices.loc[prices.index.year == period.year, "close"]
+        pe = _div(float(closes.iloc[-1]), eps_value) if not closes.empty else np.nan
+        if np.isfinite(pe) and pe > 0:
+            historical.append(float(pe))
+    if not historical:
+        return np.nan
+    return float((np.asarray(historical) < float(current_pe)).mean() * 100.0)
 
 
 def compute_metrics(symbol: str, count: int = 1300) -> dict:
@@ -147,8 +217,8 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     m["roe_yearly"], cov["roe_yearly"] = roe_list, len(roe_list)
     _, nm_list = yearly_ratio(ni_all, rev_all, 3)
     m["net_margin_yearly"], cov["net_margin_yearly"] = nm_list, len(nm_list)
-    gp_all = (rev_all - _series_all(inc, "GrossProfit")).dropna()
-    _, gm_list = yearly_ratio(gp_all, rev_all, 3)
+    gp_all = _series_all(inc, "GrossProfit", "Gross Profit")
+    gm_list = _gross_margin_history(rev_all, gp_all, 3)
     m["gross_margin_yearly"], cov["gross_margin_yearly"] = gm_list, len(gm_list)
     div_paid = _series_all(cf, *K_DIVPAID)
     _, pr_list = yearly_ratio(div_paid.abs(), ni_all, 5)
@@ -157,15 +227,7 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     # 股息率逐年: 分红历史按自然年求和 / 该年年末收盘价
     try:
         div_hist = t.dividends
-        div_year = div_hist.groupby(div_hist.index.year).sum()
-        close_year = px_df["close"].groupby(px_df.index.year).last() if len(px_df) else pd.Series()
-        dy = []
-        for year in sorted(close_year.index, reverse=True):
-            d = float(div_year.get(year, 0.0))
-            p = float(close_year.get(year, np.nan))
-            if np.isfinite(p) and p > 0:
-                dy.append(_div(d, p))
-        dy_list = dy[:7]
+        dy_list = _completed_dividend_yields(div_hist, px_df)
         m["div_yield_yearly"], cov["div_yield_yearly"] = dy_list, len(dy_list)
     except Exception:
         dy_list = []
@@ -254,16 +316,8 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
         m["rev_cagr_3y"] = np.nan
     # 销售增速 - 存货增速 (存货来自资产负债表 Inventory)
     inv_all = _series_all(bs, "Inventory")
-    if len(rev_all) >= 2:
-        rcols = list(rev_all.index)
-        sales_g = _div(rev_all[rcols[0]], rev_all[rcols[1]]) - 1
-        if len(inv_all) and rcols[1] in inv_all.index and inv_all[rcols[1]]:
-            inv_g = _div(inv_all[rcols[0]], inv_all[rcols[1]]) - 1
-            m["sales_minus_inventory_growth"] = sales_g - inv_g
-        else:
-            m["sales_minus_inventory_growth"] = np.nan
-    else:
-        m["sales_minus_inventory_growth"] = np.nan
+    m["sales_minus_inventory_growth"] = _sales_inventory_growth_spread(
+        rev_all, inv_all)
     # 净利润增长率 (年报)
     if len(ni_all) >= 2:
         ncols = list(ni_all.index)
@@ -272,19 +326,10 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     else:
         m["net_income_growth"] = np.nan
     # 戴维斯双击乘数 = EPS同比倍数 x PE同比倍数 (等价于近一年股价涨幅倍数)
-    if len(eps_all) >= 2 and len(px_df) >= 2:
-        ecols = list(eps_all.index)
-        eps_factor = _div(eps_all[ecols[0]], eps_all[ecols[1]])
-        pe_factor = _div(float(px_df["close"].iloc[-1]), float(px_df["close"].iloc[-2]))
-        m["double_play_multiplier"] = _div(eps_factor * pe_factor, 1.0)
-    else:
-        m["double_play_multiplier"] = np.nan
+    m["double_play_multiplier"] = _davis_double_play(px_df, eps_all)
     # PE(TTM) 5年分位: 日频 PE = 收盘价 / TTM EPS (EPS 短期近似恒定)
-    if len(px_df) and eps:
-        daily_pe = px_df["close"] / eps
-        m["pe_pct_5y"] = float((daily_pe < daily_pe.iloc[-1]).mean() * 100.0)
-    else:
-        m["pe_pct_5y"] = np.nan
+    m["pe_pct_5y"] = _historical_pe_percentile(
+        px_df, eps_all, m.get("trailing_pe"))
     # 聂夫总报酬率 TRR = (EPS增速% + 股息率%) / PE(TTM)
     dy_pct = (dy_list[0] * 100) if dy_list else np.nan
     eg_pct = m["eps_growth"] * 100 if m["eps_growth"] else np.nan
