@@ -31,7 +31,7 @@ TIMEFRAMES = {
 
 # 默认回测/关注标的池 (与 UI 默认关注列表一致)
 DEFAULT_SYMBOLS = ("TQQQ", "MSFT", "NFLX", "YINN", "SNOW", "TSLA",
-                   "MRNA", "NVDA", "TEM", "GOOGL", "SIVE", "AAOI")
+                   "MRNA", "NVDA", "TEM", "GOOGL", "AAOI")
 
 SIGNAL_LABELS = [
     ("B_SIGNAL", "B买(DRAWICON7)"),
