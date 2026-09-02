@@ -11,6 +11,7 @@ import threading
 import time
 from datetime import datetime
 from email.message import EmailMessage
+from email.utils import format_datetime, formataddr, make_msgid
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -287,8 +288,11 @@ def send_radar_email(snapshot: dict, recipients: list[str] | None = None,
     subject, text_body, html_body = build_report(snapshot)
     message = EmailMessage()
     message["Subject"] = subject
-    message["From"] = config["sender"]
+    message["From"] = formataddr(("GCN 机会雷达", config["sender"]))
     message["To"] = ", ".join(recipients)
+    message["Date"] = format_datetime(datetime.now(REPORT_TIMEZONE))
+    message["Message-ID"] = make_msgid(
+        domain=config["sender"].rsplit("@", 1)[-1])
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
 
@@ -298,5 +302,10 @@ def send_radar_email(snapshot: dict, recipients: list[str] | None = None,
         if config["security"] == "starttls":
             client.starttls()
         client.login(config["user"], config["password"])
-        client.send_message(message)
+        refused = client.send_message(message) or {}
+        if refused:
+            addresses = ", ".join(sorted(str(item) for item in refused))
+            raise RuntimeError(f"SMTP 拒绝收件人: {addresses}")
+    print(f"[radar-email] SMTP accepted message_id={message['Message-ID']} "
+          f"recipients={', '.join(recipients)}")
     return recipients

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """机会雷达邮件与每日调度离线测试。"""
+import io
 import os
 import tempfile
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from datetime import datetime
 from pathlib import Path
 
@@ -94,6 +95,70 @@ def test_email_report_and_smtp_delivery():
     assert sent[0].is_multipart()
 
 
+def test_email_delivery_adds_traceable_headers():
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def login(self, user, password): pass
+        def send_message(self, message):
+            sent.append(message)
+            return {}
+
+    with _env(GCN_SMTP_HOST="smtp.test", GCN_SMTP_PORT="465",
+              GCN_SMTP_USER="sender@test.com", GCN_SMTP_PASSWORD="secret",
+              GCN_SMTP_FROM="sender@test.com", GCN_SMTP_SECURITY="ssl"):
+        emailer.send_radar_email(
+            _snapshot(), recipients=["hopetribe@gmail.com"], smtp_factory=FakeSMTP)
+    message = sent[0]
+    assert message["Date"]
+    assert message["Message-ID"].endswith("@test.com>")
+    assert "GCN 机会雷达" in str(message["From"])
+
+
+def test_email_delivery_rejects_smtp_refused_recipients():
+    class FakeSMTP:
+        def __init__(self, host, port, timeout): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def login(self, user, password): pass
+        def send_message(self, message):
+            return {"blocked@example.com": (550, b"mailbox unavailable")}
+
+    with _env(GCN_SMTP_HOST="smtp.test", GCN_SMTP_PORT="465",
+              GCN_SMTP_USER="sender@test.com", GCN_SMTP_PASSWORD="secret",
+              GCN_SMTP_FROM="sender@test.com", GCN_SMTP_SECURITY="ssl"):
+        try:
+            emailer.send_radar_email(
+                _snapshot(), recipients=["blocked@example.com"], smtp_factory=FakeSMTP)
+        except RuntimeError as exc:
+            assert "blocked@example.com" in str(exc)
+        else:
+            raise AssertionError("SMTP 拒收不能记录为发送成功")
+
+
+def test_email_delivery_logs_message_id_after_acceptance():
+    class FakeSMTP:
+        def __init__(self, host, port, timeout): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def login(self, user, password): pass
+        def send_message(self, message): return {}
+
+    output = io.StringIO()
+    with _env(GCN_SMTP_HOST="smtp.test", GCN_SMTP_PORT="465",
+              GCN_SMTP_USER="sender@test.com", GCN_SMTP_PASSWORD="secret",
+              GCN_SMTP_FROM="sender@test.com", GCN_SMTP_SECURITY="ssl"), \
+         redirect_stdout(output):
+        emailer.send_radar_email(
+            _snapshot(), recipients=["hopetribe@gmail.com"], smtp_factory=FakeSMTP)
+    log = output.getvalue()
+    assert "[radar-email] SMTP accepted message_id=<" in log
+    assert "hopetribe@gmail.com" in log
+
+
 def test_email_report_uses_mobile_responsive_signal_rows():
     _, _, html = emailer.build_report(_snapshot(), now=1788192000)
     assert 'class="email-shell"' in html
@@ -132,3 +197,27 @@ def test_daily_run_warms_scans_waits_and_records_delivery():
         snapshot = scheduler.run_daily_radar(["us"], service=Service())
     assert snapshot["markets"]["us"]["cache"]["n_scanned"] == 321
     assert calls == [("warm", "us"), ("scan", ("us",)), ("delivery", True)]
+
+
+def test_daily_run_retries_transient_email_failure():
+    calls = []
+
+    class Service:
+        def start_scan(self, markets): pass
+        def snapshot(self, markets): return _snapshot()
+
+    def flaky_send(snapshot, recipients=None):
+        calls.append("send")
+        if len(calls) == 1:
+            raise OSError("temporary SMTP outage")
+        return list(recipients)
+
+    with _patched(scheduler.engine, "warm_market", lambda market, log=False: None), \
+         _patched(scheduler, "send_radar_email", flaky_send), \
+         _patched(scheduler, "record_delivery",
+                  lambda ok, message, recipients=None: calls.append(("delivery", ok))), \
+         _patched(scheduler, "get_email_settings",
+                  lambda: {"recipients": ["hopetribe@gmail.com"]}), \
+         _patched(scheduler.time, "sleep", lambda seconds: calls.append(("sleep", seconds))):
+        scheduler.run_daily_radar(["us"], service=Service())
+    assert calls == ["send", ("sleep", 60), "send", ("delivery", True)]

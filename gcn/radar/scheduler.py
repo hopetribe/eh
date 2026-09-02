@@ -2,6 +2,7 @@
 """机会雷达每日 09:00 扫描与邮件投递调度。"""
 from __future__ import annotations
 
+import smtplib
 import threading
 import time
 from datetime import datetime, timedelta
@@ -13,6 +14,7 @@ from gcn.radar.emailer import get_email_settings, record_delivery, send_radar_em
 SCHEDULE_HOUR = 9
 SCHEDULE_TIMEZONE = ZoneInfo("Asia/Shanghai")
 SCAN_TIMEOUT = 8 * 3600
+EMAIL_RETRY_DELAYS = (60, 300)
 
 
 def next_run_at(now: datetime | None = None) -> datetime:
@@ -38,6 +40,23 @@ def _wait_for_scans(service, markets: list[str], timeout: float = SCAN_TIMEOUT,
         time.sleep(poll_interval)
 
 
+def _send_email_with_retry(snapshot: dict, recipients: list[str]) -> list[str]:
+    """Retry transient SMTP/network failures without retrying auth/config errors."""
+    for attempt in range(len(EMAIL_RETRY_DELAYS) + 1):
+        try:
+            return send_radar_email(snapshot, recipients=recipients)
+        except smtplib.SMTPAuthenticationError:
+            raise
+        except (OSError, smtplib.SMTPException) as exc:
+            if attempt >= len(EMAIL_RETRY_DELAYS):
+                raise
+            delay = EMAIL_RETRY_DELAYS[attempt]
+            print(f"[radar-daily] 邮件暂时失败，{delay} 秒后重试: "
+                  f"{type(exc).__name__}: {exc}")
+            time.sleep(delay)
+    raise RuntimeError("邮件重试状态异常")
+
+
 def run_daily_radar(markets: list[str] | None = None, service=None) -> dict:
     """预热阈值股票池、完成三市场扫描并投递一封汇总邮件。"""
     markets = markets or list(engine.MARKETS)
@@ -52,8 +71,8 @@ def run_daily_radar(markets: list[str] | None = None, service=None) -> dict:
     settings = get_email_settings()
     recipients = settings["recipients"]
     try:
-        delivered = send_radar_email(snapshot, recipients=recipients)
-        message = f"已发送至 {', '.join(delivered)}"
+        delivered = _send_email_with_retry(snapshot, recipients)
+        message = f"SMTP 已接受: {', '.join(delivered)}"
         record_delivery(True, message, delivered)
         print(f"[radar-daily] {message}")
     except Exception as exc:  # noqa: BLE001 - 邮件失败不能终止次日调度
