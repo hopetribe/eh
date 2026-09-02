@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from gcn.backtest.engine import (
-    PRESETS, TIMEFRAMES, run_backtest, slice_years,
+    TIMEFRAMES, presets_for_version, run_backtest, slice_years,
 )
 from gcn.radar import engine as radar_engine
 from gcn.radar import emailer as radar_emailer
@@ -29,7 +29,7 @@ from gcn.data.service import (_auto_refresh_loop, DATA_DIR, DEFAULT_COUNT,
                               _rows_from_df, df_from_rows, fetch_quote,
                               parse_csv_text)
 from gcn.data.sample import make_sample_data
-from gcn.recipes.gcn_main import compute_ehopt10
+from gcn.recipes.gcn_main import VERSIONS, compute_ehopt10
 
 PARAM_LIMITS = {
     "SD": (20, 2, 120),
@@ -196,7 +196,7 @@ def jarr(values, nd: int = 6) -> list:
 
 def _norm_version(raw) -> str:
     version = str(raw or "v4").strip().lower()
-    if version not in {"v3", "v4"}:
+    if version not in VERSIONS:
         raise ValueError(f"未知配方版本: {version}")
     return version
 
@@ -205,6 +205,8 @@ def build_payload(df: pd.DataFrame, params: dict, version: str = "v4") -> dict:
     res = compute_ehopt10(df, **params, version=version)
 
     def flag_indices(col):
+        if col not in res:
+            return []
         return [int(i) for i in np.asarray(res[col], dtype=bool).nonzero()[0]]
 
     up_labels = [[int(i), int(v)] for i, v in enumerate(res["NINE2_UP_LABEL"].to_numpy()) if v > 0]
@@ -217,6 +219,7 @@ def build_payload(df: pd.DataFrame, params: dict, version: str = "v4") -> dict:
         return round(float(v), 4) if np.isfinite(v) else None
 
     return {
+        "version": version,
         "params": params,
         "dates": fmt_index(res.index),
         "open": jarr(res["OPEN"]), "high": jarr(res["HIGH"]),
@@ -233,6 +236,9 @@ def build_payload(df: pd.DataFrame, params: dict, version: str = "v4") -> dict:
         "upLabel": up_labels, "upNine": flag_indices("NINE2_UP_9"),
         "downLabel": down_labels, "downNine": flag_indices("NINE2_DOWN_9"),
         "bSignal": flag_indices("B_SIGNAL"), "sSignal": flag_indices("S_SIGNAL"),
+        "stageSetup": (flag_indices("B_SETUP") or flag_indices("B_STAGE_SETUP")),
+        "stageEntry": (flag_indices("B_ENTRY_SIGNAL") or flag_indices("B_STAGE_ENTRY_SIGNAL")),
+        "stageExpired": (flag_indices("B_SETUP_EXPIRED") or flag_indices("B_STAGE_EXPIRED")),
         "juefan": flag_indices("ICON_JUEFAN"),
         "sCondition": flag_indices("S_CONDITION"),
         "buy": flag_indices("NINE2_BUY_SIGNAL"), "sell": flag_indices("NINE2_SELL_SIGNAL"),
@@ -457,7 +463,7 @@ class UiHandler(BaseHTTPRequestHandler):
                 res = compute_ehopt10(df, **params, version=version)
                 res = slice_years(res, years, interval)  # 指标全量计算后按年切片, 预热不丢失
                 report = run_backtest(res, cost=cost, max_hold=max_hold,
-                                      presets=PRESETS, interval=interval)
+                                      presets=presets_for_version(version), interval=interval)
                 report["dates"] = fmt_index(res.index)
                 report["version"] = version
                 report["config"] = {"params": params, "cost": cost,
@@ -525,6 +531,8 @@ def main():
     ap.add_argument("--host", default="127.0.0.1", help="监听地址；默认仅本机访问")
     ap.add_argument("--port", type=int, default=8642)
     ap.add_argument("--no-browser", action="store_true", help="不自动打开浏览器")
+    ap.add_argument("--no-background-jobs", action="store_true",
+                    help="不启动全市场缓存预热与定时雷达（交互API仍可用）")
     ap.add_argument("--allow-remote", action="store_true",
                     help="显式允许非回环地址监听（仍应置于可信网络/反向代理之后）")
     ap.add_argument("--allowed-host", action="append", default=[],
@@ -547,11 +555,14 @@ def main():
     url_host = "127.0.0.1" if args.host in {"0.0.0.0", "::"} else args.host
     url = f"http://{url_host}:{args.port}"
     print(f"KK2 EHOPT10 指标 UI 已启动: {url}  (Ctrl+C 退出)")
-    print(f"K线本地缓存目录: {DATA_DIR}  (每日自动刷新已开启)")
-    threading.Thread(target=_auto_refresh_loop, daemon=True).start()
-    # 机会雷达: 阈值股票池日K每小时增量巡检; 每天 09:00 扫描并发送邮件
-    threading.Thread(target=radar_engine.warm_loop, daemon=True).start()
-    threading.Thread(target=radar_scheduler.daily_radar_loop, daemon=True).start()
+    if args.no_background_jobs:
+        print(f"K线本地缓存目录: {DATA_DIR}  (后台预热与定时雷达已关闭)")
+    else:
+        print(f"K线本地缓存目录: {DATA_DIR}  (每日自动刷新已开启)")
+        threading.Thread(target=_auto_refresh_loop, daemon=True).start()
+        # 机会雷达: 阈值股票池日K每小时增量巡检; 每天 09:00 扫描并发送邮件
+        threading.Thread(target=radar_engine.warm_loop, daemon=True).start()
+        threading.Thread(target=radar_scheduler.daily_radar_loop, daemon=True).start()
     if not args.no_browser:
         threading.Timer(0.3, webbrowser.open, args=(url,)).start()
     try:

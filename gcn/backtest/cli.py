@@ -8,7 +8,8 @@ import math
 import pandas as pd
 
 from gcn.backtest.engine import (
-    DEFAULT_SYMBOLS, TIMEFRAMES, _one_strategy, _exposure, _perf, run_backtest,
+    DEFAULT_SYMBOLS, TIMEFRAMES, _one_strategy, _exposure, _perf,
+    presets_for_version, run_backtest,
 )
 from gcn.data.service import DEFAULT_COUNT, df_from_rows, fetch_quote
 from gcn.recipes.gcn_main import VERSIONS, compute_ehopt10
@@ -139,7 +140,7 @@ def main(argv=None):
             continue
         res = compute_ehopt10(df, **params, version=args.version)
         report = run_backtest(res, cost=args.cost, max_hold=args.max_hold,
-                              interval=args.interval)
+                              presets=presets_for_version(args.version), interval=args.interval)
         print_report(f"{q['symbol']} ({df.index[0]:%Y-%m-%d} ~ {df.index[-1]:%Y-%m-%d})",
                      params, args.cost, report, len(df))
         print_sensitivity(df, params, args.cost, args.max_hold,

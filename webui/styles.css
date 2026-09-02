@@ -859,6 +859,24 @@ details.collapse[open] .parameter-body {
   border-color: rgba(239, 68, 68, .45);
 }
 
+.b-setup {
+  color: #93c5fd;
+  background: transparent;
+  border-color: rgba(96, 165, 250, .65);
+}
+
+.b-entry {
+  color: #dbeafe;
+  background: rgba(37, 99, 235, .34);
+  border-color: rgba(96, 165, 250, .7);
+}
+
+.b-expired {
+  color: #94a3b8;
+  background: transparent;
+  border-color: rgba(100, 116, 139, .55);
+}
+
 .b-sell,
 .b-n9 {
   color: #bbf7d0;

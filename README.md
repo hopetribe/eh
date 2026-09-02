@@ -4,7 +4,7 @@
 Python 工程化实现，配套信号回测、基本面选股、机会雷达与本地 Web 工作台。
 
 - **主图指标**: 获利筹摆动 + 布林带框架 + MACD/RSI + 九转计数, 输出 B买/S卖/绝反 等图标信号
-  (v3 = 指标原版口径, v4 = 绝反 5% 反包 + 10 日去重优化版, 默认 v4);
+  (v3 = 原版, v4 = 绝反优化版, v4-exp = 阶段B实验版, v5 = 全量B五日MA20确认稳健版；Web UI 默认 v5，Python API 默认 v4 以保持兼容);
 - **策略回测**: T+1 开盘成交口径, 信号组合对比 / 资金曲线 / 事件研究 / 分段一致性;
 - **基本面选股**: 八套大师策略 (格雷厄姆/增长双验/施洛斯/巴菲特/聂夫/林奇/费雪/戴维斯双击),
   财报数据来自 Yahoo, 结构化条件逐条判定;
@@ -26,6 +26,8 @@ pip install futu-api
 # 启动 Web UI (默认端口 8642, 自动打开浏览器)
 python3 -m gcn.server.app
 python3 -m gcn.server.app --port 8642 --no-browser
+# 仅查看/调试页面，不启动全市场缓存预热与定时雷达
+python3 -m gcn.server.app --port 8642 --no-browser --no-background-jobs
 ```
 
 默认仅监听回环地址。可信局域网中对外监听必须显式授权；通配地址还必须声明允许的 Host：
@@ -57,7 +59,7 @@ python3 tests/run_all.py        # 全部离线测试
 ```
 gcn/
   core/         TDX 算子库 (MA/EMA/SMA/STDP/CROSS/BARSLAST…, 向量化实现) + 指标库
-  recipes/      gcn_main.py — EHOPT10 配方 (v3/v4 全部中间变量与信号)
+  recipes/      gcn_main.py — EHOPT10 配方 (v3/v4/v4-exp/v5 中间变量与信号)
   data/         数据服务: FutuOpenD→Yahoo 自动回退, 落盘缓存, 新鲜度判定, 每标的并发锁
   server/       纯标准库 HTTP 服务 (ThreadingHTTPServer) + JSON API
   backtest/     回测引擎: 信号预设组合, 资金曲线, 事件研究, 分段一致性
@@ -200,7 +202,7 @@ python3 -m gcn.screener --strategy graham --market us   # CLI 选股 (-v 逐条�
 
 | 信号 | 定义 | 展示 |
 |---|---|---|
-| B买 | DRAWICON 7 (阶段信号: B评分 + 熊市修复 + 崩盘低位) | 红色 B买 徽章 |
+| B买 | v4 原始B；v5 将其作为Setup，5根内首次突破Setup高点且站上MA20才确认 | 蓝色 Setup / 红色 B买 徽章 |
 | S卖 | DRAWICON 8 (MAJOR_TOP 顶部信号) | 绿色 S卖 徽章 |
 | 绝反 | 绝地反弹 (v4: 5% 反包 + 10 日去重, 不加趋势过滤) | 橙色 绝反 徽章 |
 | S条件 | S 评分达阈值 (评分离场参考) | 描边 S条件 徽章 |

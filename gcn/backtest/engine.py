@@ -43,6 +43,8 @@ SIGNAL_LABELS = [
     ("B_CONDITION", "B条件(原始)"),
     ("S_CONDITION", "S条件(原始)"),
     ("B_STAGE_SIGNAL", "阶段底(B_STAGE)"),
+    ("B_STAGE_ENTRY_SIGNAL", "阶段确认(B_STAGE_EXP)"),
+    ("B_SETUP", "v5 B买Setup"),
 ]
 
 HORIZONS = (3, 5, 10, 20)
@@ -56,7 +58,23 @@ PRESETS = [
     {"name": "B买+绝反 → S条件", "entry": ["B_SIGNAL", "ICON_JUEFAN"],
      "exit": ["S_CONDITION"]},
     {"name": "绝反 → S条件", "entry": ["ICON_JUEFAN"], "exit": ["S_CONDITION"]},
+    {"name": "阶段Setup → S卖", "entry": ["B_STAGE_SETUP"], "exit": ["S_SIGNAL"]},
+    {"name": "阶段确认 → S卖", "entry": ["B_STAGE_ENTRY_SIGNAL"], "exit": ["S_SIGNAL"]},
 ]
+
+V5_RECOMMENDED_PRESET = {
+    "name": "v5推荐: B确认+绝反 → S卖 + 20%止损",
+    "entry": ["B_SIGNAL", "ICON_JUEFAN"],
+    "exit": ["S_SIGNAL"],
+    "trail": 0.20,
+}
+
+
+def presets_for_version(version: str):
+    """返回版本对应策略集；v5 首项为审计验证后的正式推荐。"""
+    if version == "v5":
+        return [V5_RECOMMENDED_PRESET, *PRESETS]
+    return PRESETS
 
 
 # ==========================================================================

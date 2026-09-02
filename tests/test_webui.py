@@ -30,6 +30,24 @@ def test_webui_inline_javascript_parses():
     assert proc.returncode == 0, proc.stderr
 
 
+def test_webui_exposes_experimental_version_and_comparison():
+    script = _inline_script()
+    assert '<option value="v4-exp">v4 实验确认版</option>' in INDEX
+    assert 'id="btCompareExp"' in INDEX
+    assert 'runCompare("v4", "v4-exp")' in script
+    assert '"stageSetup", "stageEntry", "stageExpired"' in script
+    assert 'name: "B买Setup"' in script
+
+
+def test_webui_exposes_v5_as_the_recommended_default_and_comparison():
+    script = _inline_script()
+    assert '<option value="v5" selected>v5 稳健版</option>' in INDEX
+    assert 'version: "v5"' in script
+    assert 'runCompare("v4", "v5")' in script
+    assert "B买5日MA20确认" in script
+    assert "20%跟踪止损" in script
+
+
 def test_webui_uses_product_name_as_document_title():
     assert "<title>金筹九转 GCN</title>" in INDEX
 

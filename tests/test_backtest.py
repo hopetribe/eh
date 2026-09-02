@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from gcn.backtest.engine import (
-    PRESETS, _buy_hold, _exposure, _one_strategy, _perf,
+    PRESETS, _buy_hold, _exposure, _one_strategy, _perf, presets_for_version,
     event_study, slice_years, run_backtest,
 )
 from gcn.data.sample import make_sample_data
@@ -43,6 +43,29 @@ def test_run_backtest_shape_and_consistency():
     ev = rep["events"]
     assert any(e["signal"] == "B_SIGNAL" for e in ev)
     assert any(e["signal"] == "_BASE" for e in ev)
+
+
+def test_experimental_stage_strategy_is_only_available_for_experimental_version():
+    stable = run_backtest(compute_ehopt10(make_sample_data(600), version="v4"))
+    experiment = run_backtest(compute_ehopt10(make_sample_data(600), version="v4-exp"))
+
+    stable_names = {row["name"] for row in stable["strategies"]}
+    experiment_names = {row["name"] for row in experiment["strategies"]}
+    assert "阶段Setup → S卖" not in stable_names
+    assert "阶段确认 → S卖" not in stable_names
+    assert {"阶段Setup → S卖", "阶段确认 → S卖"} <= experiment_names
+    assert any(row["signal"] == "B_STAGE_ENTRY_SIGNAL" for row in experiment["events"])
+
+
+def test_v5_presets_include_the_validated_trailing_stop_strategy():
+    assert presets_for_version("v4") is PRESETS
+    recommended = presets_for_version("v5")[0]
+    assert recommended == {
+        "name": "v5推荐: B确认+绝反 → S卖 + 20%止损",
+        "entry": ["B_SIGNAL", "ICON_JUEFAN"],
+        "exit": ["S_SIGNAL"],
+        "trail": 0.20,
+    }
 
 
 def test_preset_columns_missing_skips():

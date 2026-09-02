@@ -114,6 +114,53 @@ def test_server_backtest_preserves_zero_cost_and_interval():
     assert data["timeframe"]["period_label"] == "周"
 
 
+def test_server_exposes_experimental_stage_signals_without_changing_v4_payload_shape():
+    headers = {"Content-Type": "application/json"}
+    stable_status, _, stable_payload = _serve_request(
+        "POST", "/api/compute",
+        body=json.dumps({"source": "sample", "seed": 7, "version": "v4"}).encode(),
+        headers=headers,
+    )
+    exp_status, _, exp_payload = _serve_request(
+        "POST", "/api/compute",
+        body=json.dumps({"source": "sample", "seed": 7, "version": "v4-exp"}).encode(),
+        headers=headers,
+    )
+
+    assert stable_status == exp_status == 200
+    stable = json.loads(stable_payload)
+    experiment = json.loads(exp_payload)
+    for key in ("stageSetup", "stageEntry", "stageExpired"):
+        assert stable[key] == []
+        assert isinstance(experiment[key], list)
+    assert experiment["version"] == "v4-exp"
+
+
+def test_server_exposes_v5_confirmed_b_signals_and_recommended_backtest():
+    headers = {"Content-Type": "application/json"}
+    status, _, payload = _serve_request(
+        "POST", "/api/compute",
+        body=json.dumps({"source": "sample", "seed": 11, "version": "v5"}).encode(),
+        headers=headers,
+    )
+    assert status == 200
+    data = json.loads(payload)
+    assert data["version"] == "v5"
+    assert data["stageSetup"]
+    assert data["stageEntry"] == data["bSignal"]
+    assert isinstance(data["stageExpired"], list)
+
+    status, _, payload = _serve_request(
+        "POST", "/api/backtest",
+        body=json.dumps({"source": "sample", "seed": 11, "version": "v5"}).encode(),
+        headers=headers,
+    )
+    assert status == 200
+    report = json.loads(payload)
+    assert report["version"] == "v5"
+    assert report["strategies"][0]["name"] == "v5推荐: B确认+绝反 → S卖 + 20%止损"
+
+
 def test_server_rows_source_never_falls_back_to_sample():
     for path in ("/api/compute", "/api/backtest"):
         for body_obj in ({"source": "rows", "rows": []}, {"rows": []}):

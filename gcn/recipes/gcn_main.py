@@ -15,6 +15,8 @@
 版本:
   v3 = 参考指标原始信号 (3%反包, 无去重)   [git tag v3.0.0]
   v4 = 5%反包 + 10日去重 (当前默认)        [git tag v4.0.0]
+  v4-exp = v4 指标 + B_STAGE Setup→Confirm 实验买点
+  v5 = v4 全量B买 Setup→5日MA20确认 (正式稳健版)
   共同口径: ★买/★卖已弃用; 绝反不加趋势过滤 (熊市触发优于牛市)。
 """
 from __future__ import annotations
@@ -30,7 +32,51 @@ from gcn.core.tdx import (
 # B_SCORE_1 的获利筹低位门槛 (原公式 8; 放宽可提升低点覆盖率, 见回测诊断)
 B_CHIP_LOW = 8.0
 
-VERSIONS = ("v3", "v4")
+VERSIONS = ("v3", "v4", "v4-exp", "v5")
+
+
+def _stage_confirmation(setup: pd.Series,
+                        high: pd.Series,
+                        close: pd.Series,
+                        trend_ma: pd.Series,
+                        window: int = 5) -> tuple[pd.Series, pd.Series]:
+    """把买入信号作为 Setup，生成无前视的首次确认和过期标记。
+
+    Setup 当根不允许确认。随后 ``window`` 根 K 线内，首次满足收盘价
+    突破 Setup 高点且站上指定趋势均线时确认；最终有效 K 线仍未确认则标记过期。
+    """
+    if isinstance(window, (bool, np.bool_)) or int(window) != window or int(window) <= 0:
+        raise ValueError("window 必须是正整数")
+    window = int(window)
+    if not (setup.index.equals(high.index)
+            and setup.index.equals(close.index)
+            and setup.index.equals(trend_ma.index)):
+        raise ValueError("Setup 确认序列索引必须一致")
+
+    entry = pd.Series(False, index=setup.index, dtype=bool)
+    expired = pd.Series(False, index=setup.index, dtype=bool)
+    pending_high = None
+    age = 0
+    for i in range(len(setup)):
+        if bool(setup.iloc[i]):
+            pending_high = float(high.iloc[i])
+            age = 0
+            continue
+        if pending_high is None:
+            continue
+        age += 1
+        confirmed = (np.isfinite(pending_high)
+                     and np.isfinite(close.iloc[i])
+                     and np.isfinite(trend_ma.iloc[i])
+                     and close.iloc[i] > pending_high
+                     and close.iloc[i] > trend_ma.iloc[i])
+        if confirmed:
+            entry.iloc[i] = True
+            pending_high = None
+        elif age == window:
+            expired.iloc[i] = True
+            pending_high = None
+    return entry, expired
 
 def _load_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     """列名归一化为 open/high/low/close/volume (大小写不敏感)。"""
@@ -56,7 +102,9 @@ def compute_ehopt10(df: pd.DataFrame,
 
     参数与富途指标参数表一致:
       SD=20, WIDTH=2, N=4, OFFSET=15 (默认值见参数表截图)
-      version: "v4" 优化版 (默认, 绝反 5%反包+10日去重) | "v3" 参考指标版
+      version: "v4" 优化版 (默认) | "v3" 参考指标版 |
+               "v4-exp" 阶段B Setup→Confirm 实验版 |
+               "v5" 全量B五日MA20确认稳健版
 
     返回 DataFrame, 主要输出列:
       DIS/MID/UPPER/LOWER          主图布林带
@@ -162,7 +210,7 @@ def compute_ehopt10(df: pd.DataFrame,
     jf_thr = 1.03 if version == "v3" else 1.05
     VAR3N = (CLOSE > OPEN) & ((safe_div(CLOSE, OPEN) > jf_thr) | (CLOSE > jf_thr * REF(CLOSE, 1)))
     JF_RAW = (VAR2N & VAR3N & VOLC_B).fillna(False)  # 未去重原始触发 (供 B_BEAR_SETUP)
-    if version == "v4":
+    if version != "v3":
         jf_gap_prev = REF(BARSLAST(JF_RAW), 1)
         # 当期成立且距上次触发 >= 10 日 (首次触发放行)。
         # BARSLAST 在触发当日为 0, 须取前一日值: 前一日距上次 >=9 即今日间隔 >=10。
@@ -225,6 +273,14 @@ def compute_ehopt10(df: pd.DataFrame,
         & (RSI1 > 50) & (MACD > REF(MACD, 1))
     B_STAGE_RAW = STAGE_LOW & STAGE_EXHAUST & STAGE_TREND & STAGE_CONFIRM
     B_STAGE_SIGNAL = B_STAGE_RAW & (COUNT(B_STAGE_RAW, 25) == 1) & (~B_CONDITION) & (juefan == 0)
+    if version == "v4-exp":
+        B_STAGE_ENTRY_SIGNAL, B_STAGE_EXPIRED = _stage_confirmation(
+            B_STAGE_SIGNAL, HIGH, CLOSE, MA(CLOSE, 60), window=5,
+        )
+        B_STAGE_COMPONENT = B_STAGE_ENTRY_SIGNAL
+    else:
+        B_STAGE_ENTRY_SIGNAL = B_STAGE_EXPIRED = None
+        B_STAGE_COMPONENT = B_STAGE_SIGNAL
 
     # ---------- 综合 B 信号 ----------
     B_BASE_BULL = B_CONDITION & (CLOSE >= MA(CLOSE, 200)) & (~FAST_CRASH)
@@ -235,9 +291,17 @@ def compute_ehopt10(df: pd.DataFrame,
         & (VOLA > MA(VOLA, 20) * 1.80)
     B_CRASH_RECOVER = (COUNT(REF(CRASH_SETUP, 1), 15) > 0) & (CLOSE > MA(CLOSE, 5)) \
         & (CLOSE > REF(HHV(HIGH, 3), 1)) & (RSI1 > 45) & (MACD > REF(MACD, 1))
-    B_ALL_RAW = B_BASE_BULL | B_STAGE_SIGNAL | B_BEAR_RECOVER | B_CRASH_RECOVER
+    B_ALL_RAW = B_BASE_BULL | B_STAGE_COMPONENT | B_BEAR_RECOVER | B_CRASH_RECOVER
     # DRAWICON(B_SIGNAL,LOW,7)
-    B_SIGNAL = B_ALL_RAW & (COUNT(B_ALL_RAW, 20) == 1)
+    B_SETUP = B_ALL_RAW & (COUNT(B_ALL_RAW, 20) == 1)
+    if version == "v5":
+        B_ENTRY_SIGNAL, B_SETUP_EXPIRED = _stage_confirmation(
+            B_SETUP, HIGH, CLOSE, MID, window=5,
+        )
+        B_SIGNAL = B_ENTRY_SIGNAL
+    else:
+        B_ENTRY_SIGNAL = B_SETUP_EXPIRED = None
+        B_SIGNAL = B_SETUP
 
     # ---------- 综合 S 信号 ----------
     MA5 = MA(CLOSE, 5)
@@ -338,6 +402,14 @@ def compute_ehopt10(df: pd.DataFrame,
     out["S_CONDITION_DOWN_LONG"] = S_CONDITION_DOWN_LONG
     out["S_CONDITION_UP_LAST"] = S_CONDITION_UP_LAST
     out["B_STAGE_SIGNAL"] = B_STAGE_SIGNAL
+    if version == "v4-exp":
+        out["B_STAGE_SETUP"] = B_STAGE_SIGNAL
+        out["B_STAGE_ENTRY_SIGNAL"] = B_STAGE_ENTRY_SIGNAL
+        out["B_STAGE_EXPIRED"] = B_STAGE_EXPIRED
+    if version == "v5":
+        out["B_SETUP"] = B_SETUP
+        out["B_ENTRY_SIGNAL"] = B_ENTRY_SIGNAL
+        out["B_SETUP_EXPIRED"] = B_SETUP_EXPIRED
     out["B_SIGNAL"] = B_SIGNAL                # DRAWICON(B_SIGNAL,LOW,7)
     out["S_SIGNAL"] = S_SIGNAL                # DRAWICON(S_SIGNAL,S_POSITION,8)
     out["S_POSITION"] = S_POSITION
