@@ -1080,7 +1080,10 @@ const SIG_TYPES = [
 function renderSignals(d) {
   const items = [];
   for (const [key, label, cls] of SIG_TYPES) {
-    for (const i of d[key]) items.push({ i, label, cls, key });
+    for (const i of d[key]) {
+      if (key === "stageEntry" && d.bSignal.includes(i)) continue;
+      items.push({ i, label, cls, key });
+    }
   }
   items.sort((a, b) => b.i - a.i);
   const visible = items.slice(0, state.signalLimit);
@@ -1088,7 +1091,7 @@ function renderSignals(d) {
   const html = visible.map((it) => `
     <div class="sig-item${state.selectedSignal === it.i ? " is-selected" : ""}" data-i="${it.i}"
          role="button" tabindex="0" aria-label="定位 ${d.dates[it.i]} ${it.label}，价格 ${num(d.close[it.i])}">
-      <span class="d">${d.dates[it.i]}</span>
+      <span class="d" title="${esc(d.dates[it.i])}">${esc(d.dates[it.i])}</span>
       <span class="t"><span class="badge ${it.cls}">${it.label}</span></span>
       <span class="p">${num(d.close[it.i])}</span>
     </div>`).join("");
@@ -1113,7 +1116,8 @@ function renderSignals(d) {
 
 $("#moreSignals").addEventListener("click", () => {
   if (!state.data) return;
-  const total = SIG_TYPES.reduce((count, [key]) => count + state.data[key].length, 0);
+  const duplicateConfirmations = state.data.stageEntry.filter((i) => state.data.bSignal.includes(i)).length;
+  const total = SIG_TYPES.reduce((count, [key]) => count + state.data[key].length, 0) - duplicateConfirmations;
   state.signalLimit = state.signalLimit >= total ? 24 : Math.min(total, state.signalLimit + 56);
   renderSignals(state.data);
   if (state.signalLimit === 24) $("#sigList").scrollTop = 0;
@@ -1407,6 +1411,7 @@ function tooltipHtml(i) {
     `<span>${k}</span><b>${v}</b></div>`;
   const marks = [];
   for (const [key, label, cls] of SIG_TYPES) {
+    if (key === "stageEntry" && d.bSignal.includes(i)) continue;
     if (d[key].includes(i)) marks.push(`<span class="badge ${cls}">${label}</span>`);
   }
   return `<div class="gcn-tooltip">

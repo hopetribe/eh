@@ -107,6 +107,19 @@ def test_webui_legend_is_horizontally_scrollable():
     assert "overflow-y: hidden" in rules
 
 
+def test_signal_history_keeps_labels_readable_and_deduplicates_confirmed_buys():
+    script = _inline_script()
+    grid = re.search(r"\.signal-columns,\s*\.sig-item\s*\{([^}]+)\}", STYLES, re.S)
+    badge = re.search(r"\.badge\s*\{([^}]+)\}", STYLES, re.S)
+    date_cell = re.search(r"\.sig-item \.d,\s*\.sig-item \.p\s*\{([^}]+)\}", STYLES, re.S)
+
+    assert grid and "minmax(100px, 1fr) 68px 48px" in grid.group(1)
+    assert badge and "white-space: nowrap" in badge.group(1)
+    assert date_cell and "text-overflow: ellipsis" in date_cell.group(1)
+    assert 'key === "stageEntry" && d.bSignal.includes(i)' in script
+    assert 'title="${esc(d.dates[it.i])}"' in script
+
+
 def test_webui_compute_failure_clears_quote_loading_state():
     script = _inline_script()
     assert 'setDataStatus(`指标计算失败' in script

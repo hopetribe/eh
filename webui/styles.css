@@ -762,14 +762,14 @@ details.collapse[open] .parameter-body {
 .signal-columns,
 .sig-item {
   display: grid;
-  grid-template-columns: minmax(82px, 1fr) 64px 64px;
+  grid-template-columns: minmax(100px, 1fr) 68px 48px;
   align-items: center;
-  column-gap: 7px;
+  column-gap: 5px;
 }
 
 .signal-columns {
   min-height: 27px;
-  padding: 0 11px;
+  padding: 0 8px;
   color: var(--text-muted);
   font-size: 10px;
   background: rgba(23, 33, 45, .58);
@@ -790,7 +790,7 @@ details.collapse[open] .parameter-body {
 .sig-item {
   position: relative;
   min-height: 36px;
-  padding: 0 11px;
+  padding: 0 8px;
   border-radius: 0;
   cursor: pointer;
   transition: background-color .14s ease;
@@ -819,11 +819,14 @@ details.collapse[open] .parameter-body {
 
 .sig-item .d,
 .sig-item .p {
+  min-width: 0;
+  overflow: hidden;
   width: auto;
   color: var(--text-secondary);
   font-family: var(--font-num);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -849,6 +852,7 @@ details.collapse[open] .parameter-body {
   font-weight: 700;
   line-height: 20px;
   letter-spacing: .01em;
+  white-space: nowrap;
   border: 1px solid transparent;
   border-radius: 5px;
 }
