@@ -107,6 +107,40 @@ Futu 按合法分页键拉取完整时间窗；两端 OHLC 均统一为复权口
 
 ---
 
+## v6 前向 Shadow 运维
+
+v6 目前只是冻结预注册的前向候选，**不是生产策略版本**；生产和 Web UI 继续使用 v5。
+运维只允许使用 `gcn.backtest.shadow_cli`，不要直接调用底层 `shadow_runner`。状态目录必须位于仓库外、
+只允许当前账号访问；服务器固定解释器为 `/home/eric/venvs/kk2/bin/python`。
+
+```bash
+# 1. 只读检查：校验10股相邻事务锁、CSV/meta摘要、adjusted来源、交易日与已有权威链
+/home/eric/venvs/kk2/bin/python -m gcn.backtest.shadow_cli \
+  --state-root /home/eric/.local/state/kk2-shadow preflight
+
+# 2. 仅由操作员执行一次；首个cutoff后共同交易日到达前返回WAITING且不创建任何状态
+/home/eric/venvs/kk2/bin/python -m gcn.backtest.shadow_cli \
+  --state-root /home/eric/.local/state/kk2-shadow \
+  --expected-python /home/eric/venvs/kk2/bin/python initialize
+
+# 3. 定时任务只能调用update；未初始化时失败关闭，绝不隐式创建genesis
+/home/eric/venvs/kk2/bin/python -m gcn.backtest.shadow_cli \
+  --state-root /home/eric/.local/state/kk2-shadow \
+  --expected-python /home/eric/venvs/kk2/bin/python update
+
+# 4. 只从commit/generation权威链重放；只报告派生缓存问题，不写入或自动修复
+/home/eric/venvs/kk2/bin/python -m gcn.backtest.shadow_cli \
+  --state-root /home/eric/.local/state/kk2-shadow status
+```
+
+所有非帮助输出均为单行 canonical JSON：成功写 stdout，失败写 stderr。退出码 `0` 表示成功、
+无新增或等待首个共同日，`2` 表示参数/spec配置错误，`3` 表示行情 `DATA_BLOCKED`，`4` 表示
+生命周期、权限、源码、运行时或权威链异常，`1` 仅表示未预期内部错误。`initialize` 与 `update`
+必须显式提供并匹配 `--expected-python`；任何 sidecar 缺失、`adjustment != adjusted`、来源不受支持或
+CSV SHA-256 不一致都必须由上游行情刷新事务修复，禁止手工重算摘要绕过门禁。
+
+---
+
 ## 机会雷达
 
 主动发现各市场大市值标的近期的 B买 / 绝反 信号。

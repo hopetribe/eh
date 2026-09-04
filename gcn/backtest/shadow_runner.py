@@ -13,7 +13,7 @@ import tempfile
 import threading
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -67,9 +67,11 @@ ALGORITHM_SOURCE_PATHS = (
     "gcn/backtest/engine.py",
     "gcn/backtest/shadow_specs/nyse-us-equities-sessions-20260906-20301231.json",
     "gcn/backtest/shadow_evaluation.py",
+    "gcn/backtest/shadow_operations.py",
     "gcn/backtest/shadow_runner.py",
     "gcn/backtest/shadow_validation.py",
     "gcn/core/tdx.py",
+    "gcn/data/service.py",
     "gcn/recipes/gcn_main.py",
 )
 
@@ -77,20 +79,35 @@ _THREAD_LOCKS_GUARD = threading.Lock()
 _THREAD_LOCKS: dict[str, threading.Lock] = {}
 
 
+class ShadowRunnerLifecycleError(ValueError):
+    """官方调用模式与实验生命周期不匹配。"""
+
+
+class ShadowRunnerDataBlockedError(ValueError):
+    """官方内存行情不满足追加或交易日约束。"""
+
+
 @contextmanager
 def _experiment_lock(
-    state_root: Path, experiment_id: str, spec_hash: str,
+    state_root: Path, experiment_id: str, spec_hash: str, *,
+    create: bool = True, shared: bool = False,
 ):
     """以进程内互斥+相邻flock串行化首次发布和全部增量提交。"""
     lock_dir = state_root / experiment_id
-    lock_dir.mkdir(parents=True, exist_ok=True)
+    if create:
+        lock_dir.mkdir(parents=True, exist_ok=True)
+    elif not lock_dir.is_dir():
+        raise ShadowRunnerLifecycleError("影子实验尚未初始化")
     lock_path = lock_dir / f".{spec_hash}.lock"
+    if not create and not lock_path.is_file():
+        raise ShadowRunnerLifecycleError("影子实验锁缺失")
     lock_key = str(lock_path.resolve())
     with _THREAD_LOCKS_GUARD:
         thread_lock = _THREAD_LOCKS.setdefault(lock_key, threading.Lock())
     with thread_lock:
-        with lock_path.open("a+b") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        with lock_path.open("a+b" if create else "rb") as lock_file:
+            lock_mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+            fcntl.flock(lock_file.fileno(), lock_mode)
             try:
                 yield
             finally:
@@ -1687,8 +1704,10 @@ def _generation_reference(current: dict[str, Any]) -> str:
     return f"{sequence:016d}-{generation_hash}"
 
 
-def _read_current(experiment_dir: Path) -> dict[str, Any]:
-    """以连续commit链为权威定位头部，并修复非权威CURRENT缓存。"""
+def _read_current(
+    experiment_dir: Path, *, repair_cache: bool = True,
+) -> dict[str, Any]:
+    """以连续commit链定位权威头；写入口可选择修复CURRENT缓存。"""
     commits_dir = experiment_dir / "commits"
     try:
         commit_paths = sorted(commits_dir.glob("*.commit"))
@@ -1748,10 +1767,10 @@ def _read_current(experiment_dir: Path) -> dict[str, Any]:
                 TypeError, ValueError):
             cached_pointer = None
             cached_is_canonical = False
-        if (cached_is_canonical
+        if (repair_cache and cached_is_canonical
                 and cached_pointer["sequence"] > current["sequence"]):
             raise ValueError("CURRENT显示权威头回退，commit尾部可能丢失")
-    if cached_payload != current_payload:
+    if repair_cache and cached_payload != current_payload:
         _write_canonical_json(current_path, current)
     return current
 
@@ -2140,10 +2159,39 @@ def _append_generation(
 
 def _run_shadow_update_locked(
     spec: dict[str, Any],
-    data_dir: Path,
+    data_dir: Path | None,
     state_root: Path,
+    *,
+    captured_frames: Mapping[str, pd.DataFrame] | None = None,
+    operation: str = "legacy",
 ) -> dict[str, Any]:
     """验证并追加本地日K，随后原子更新READY前白名单账本。"""
+    if operation not in {"legacy", "initialize", "update", "repair"}:
+        raise ValueError("未知shadow操作模式")
+    if operation == "legacy":
+        if data_dir is None or captured_frames is not None:
+            raise ValueError("legacy模式必须且只能使用data_dir")
+    elif operation == "repair":
+        if data_dir is not None or captured_frames is not None:
+            raise ValueError("repair模式不得读取外部行情")
+    elif data_dir is not None or captured_frames is None:
+        raise ValueError("官方shadow模式必须且只能使用内存行情快照")
+    normalized_captured: dict[str, pd.DataFrame] | None = None
+    if captured_frames is not None:
+        expected_symbols = set(spec["universe"]["core_symbols"])
+        if set(captured_frames) != expected_symbols:
+            raise ShadowRunnerDataBlockedError(
+                "内存行情快照标的集合不匹配"
+            )
+        try:
+            normalized_captured = {
+                symbol: merge_accepted_bars(
+                    None, captured_frames[symbol].copy(deep=True),
+                )
+                for symbol in spec["universe"]["core_symbols"]
+            }
+        except ValueError as error:
+            raise ShadowRunnerDataBlockedError(str(error)) from error
     spec_hash = canonical_spec_hash(spec)
     experiment_dir = state_root / spec["experiment_id"] / spec_hash
     bars_dir = experiment_dir / "accepted_bars"
@@ -2156,6 +2204,8 @@ def _run_shadow_update_locked(
     current = None
     accepted_frames = None
     if registration_path.exists():
+        if operation == "initialize":
+            raise ShadowRunnerLifecycleError("影子实验已经初始化")
         try:
             registration_payload = registration_path.read_bytes()
             registration = json.loads(registration_payload.decode("utf-8"))
@@ -2200,24 +2250,39 @@ def _run_shadow_update_locked(
                     authoritative_protocol["evaluation_result"],
                 )
             return authoritative_ledger
+        if operation == "repair":
+            raise ShadowRunnerLifecycleError(
+                "非终态shadow缓存修复必须通过带行情的update执行"
+            )
+    elif operation in {"update", "repair"}:
+        raise ShadowRunnerLifecycleError("影子实验尚未初始化")
     elif experiment_dir.exists():
         raise ValueError("影子状态缺少registration.json，拒绝接续")
 
     merged_frames: dict[str, pd.DataFrame] = {}
     for symbol in spec["universe"]["core_symbols"]:
-        incoming = _read_bar_csv(data_dir / f"{symbol}_1d.csv")
+        incoming = (
+            normalized_captured[symbol]
+            if normalized_captured is not None else
+            _read_bar_csv(data_dir / f"{symbol}_1d.csv")
+        )
         accepted = (
             accepted_frames[symbol]
             if registration is not None else None
         )
         if registration is not None:
             _verify_frozen_prefix(registration, symbol, accepted)
-        rebased_incoming, _revision_metadata = rebase_adjusted_incoming(
-            accepted,
-            incoming,
-            tolerance_ppm=spec["universe"]["revision_tolerance_ppm"],
-        )
-        merged = merge_accepted_bars(accepted, rebased_incoming)
+        try:
+            rebased_incoming, _revision_metadata = rebase_adjusted_incoming(
+                accepted,
+                incoming,
+                tolerance_ppm=spec["universe"]["revision_tolerance_ppm"],
+            )
+            merged = merge_accepted_bars(accepted, rebased_incoming)
+        except ValueError as error:
+            if operation == "legacy":
+                raise
+            raise ShadowRunnerDataBlockedError(str(error)) from error
         merged_frames[symbol] = merged
 
     if registration is not None:
@@ -2225,13 +2290,26 @@ def _run_shadow_update_locked(
         protocol_state = authoritative_protocol
         committed_frames = accepted_frames
     if registration is None:
+        if operation == "initialize":
+            try:
+                boundaries = derive_shadow_boundaries(spec, merged_frames)
+            except ValueError as error:
+                raise ShadowRunnerDataBlockedError(str(error)) from error
+            if boundaries["elapsed_common_sessions"] < 1:
+                raise ShadowRunnerLifecycleError(
+                    "首次建账仍无cutoff后的核心池共同交易日"
+                )
         cutoff = pd.Timestamp(spec["boundaries"]["signal_cutoff_exclusive"])
         base_frames = {
             symbol: frame.loc[frame.index <= cutoff]
             for symbol, frame in merged_frames.items()
         }
         if any(frame.empty for frame in base_frames.values()):
-            raise ValueError("首次注册在cutoff前缺少核心标的基线行情")
+            if operation == "legacy":
+                raise ValueError("首次注册在cutoff前缺少核心标的基线行情")
+            raise ShadowRunnerDataBlockedError(
+                "首次注册在cutoff前缺少核心标的基线行情"
+            )
         base_ledger, base_protocol = _build_pre_ready_snapshot(
             spec, base_frames,
         )
@@ -2267,7 +2345,10 @@ def _run_shadow_update_locked(
             merged_frames[symbol].index > previous_session
         ]
         if not symbol_sessions.equals(new_sessions):
-            raise ValueError("核心池前向交易日不一致，按DATA_BLOCKED处理")
+            message = "核心池前向交易日不一致，按DATA_BLOCKED处理"
+            if operation == "legacy":
+                raise ValueError(message)
+            raise ShadowRunnerDataBlockedError(message)
     for session in new_sessions:
         prefix_frames = {
             symbol: frame.loc[:session]
@@ -2300,11 +2381,15 @@ def _run_shadow_update_locked(
             bars_dir / f"{symbol}_1d.csv", committed_frames[symbol],
         )
     _write_json(ledger_path, ledger)
+    evaluation_path = experiment_dir / "evaluation.json"
     if protocol_state.get("evaluation_result") is not None:
         _write_json(
-            experiment_dir / "evaluation.json",
+            evaluation_path,
             protocol_state["evaluation_result"],
         )
+    elif evaluation_path.exists():
+        evaluation_path.unlink()
+        _fsync_directory(experiment_dir)
     return ledger
 
 
@@ -2319,4 +2404,44 @@ def run_shadow_update(
     with _experiment_lock(state_root, spec["experiment_id"], spec_hash):
         return _run_shadow_update_locked(
             spec, data_dir, state_root,
+        )
+
+
+def run_shadow_snapshot(
+    spec: dict[str, Any], frames: Mapping[str, pd.DataFrame],
+    state_root: Path, *, operation: str,
+) -> dict[str, Any]:
+    """只消费已捕获内存行情的官方初始化/更新入口。"""
+    if operation not in {"initialize", "update"}:
+        raise ValueError("官方shadow操作必须是initialize或update")
+    if operation == "initialize":
+        try:
+            boundaries = derive_shadow_boundaries(spec, dict(frames))
+        except ValueError as error:
+            raise ShadowRunnerDataBlockedError(str(error)) from error
+        if boundaries["elapsed_common_sessions"] < 1:
+            raise ShadowRunnerLifecycleError(
+                "首次建账仍无cutoff后的核心池共同交易日"
+            )
+    spec_hash = canonical_spec_hash(spec)
+    with _experiment_lock(
+        Path(state_root), spec["experiment_id"], spec_hash,
+        create=operation == "initialize",
+    ):
+        return _run_shadow_update_locked(
+            spec, None, Path(state_root), captured_frames=frames,
+            operation=operation,
+        )
+
+
+def repair_shadow_caches(
+    spec: dict[str, Any], state_root: Path,
+) -> dict[str, Any]:
+    """不读取外部行情，只修复已经封口终态的派生缓存。"""
+    spec_hash = canonical_spec_hash(spec)
+    with _experiment_lock(
+        Path(state_root), spec["experiment_id"], spec_hash, create=False,
+    ):
+        return _run_shadow_update_locked(
+            spec, None, Path(state_root), operation="repair",
         )

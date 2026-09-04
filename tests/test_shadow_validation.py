@@ -532,9 +532,11 @@ def test_initial_shadow_ledger_discloses_only_preregistered_fields():
         "gcn/backtest/shadow_specs/"
         "nyse-us-equities-sessions-20260906-20301231.json",
         "gcn/backtest/shadow_evaluation.py",
+        "gcn/backtest/shadow_operations.py",
         "gcn/backtest/shadow_runner.py",
         "gcn/backtest/shadow_validation.py",
         "gcn/core/tdx.py",
+        "gcn/data/service.py",
         "gcn/recipes/gcn_main.py",
     }
     assert all(

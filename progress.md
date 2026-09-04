@@ -317,3 +317,22 @@
 | 首次点名源码清单测试时使用了不存在的测试函数名 | 1 | 用`rg`定位实际函数名后重跑，先得到预期红灯再完成源码覆盖修复 |
 | 裸Python完整入口在沙箱内有11项本地HTTP绑定及3项Futu日志目录权限失败 | 1 | 按既定审批在本机权限环境重跑，`272/272`通过；无业务断言失败 |
 | 发布前静态检查误用不存在的`/opt/homebrew/bin/python3` | 1 | 从pytest shebang定位固定解释器`/opt/homebrew/opt/python@3.11/bin/python3.11`，静态编译与摘要复核随后通过 |
+
+## 2026-09-05 Phase 15 官方运维闭环与发布准备
+
+- TDD循环53：先用两个线程同步读到相同旧序号，稳定复现“实际只追加一代、两个调用均返回UPDATED”；随后将状态重验、权限扫描、十股快照、提交及提交后读取纳入同一实验独占锁，结果精确收敛为一个UPDATED和一个NO_CHANGE。
+- TDD循环54：普通文件状态根先被误报UNINITIALIZED；新增仓库外绝对路径、真实目录、当前所有者和私有权限契约，且在所有公开运维操作入口统一执行。
+- TDD循环55：canonical但领先的伪造CURRENT先否决只读status；现只读路径完全服从连续commit/generation权威链并将CURRENT标记stale，写路径继续保留潜在commit尾丢失保护。
+- TDD循环56：行情`flock`异常先裸抛PermissionError；现获取/释放失败稳定映射为DATA_BLOCKED。初始化状态锁/写入OSError也稳定映射为STATE_BLOCKED，不再成为INTERNAL_ERROR。
+- 官方CLI、README运行手册、源码身份绑定和裸Python模块清单均已补齐；真实preflight聚合报告五只核心标的sidecar摘要不一致，按设计零状态写入并禁止初始化。
+- 发布前Shadow专项`167 passed`；最后增加状态锁错误分类后，完整pytest为`359 passed`，裸Python兼容入口为`332/332`通过。静态编译、摘要与差异检查在提交前继续单独核验。
+- Homebrew Python 3.11与系统Python双解释器`py_compile`、`git diff --check`均通过；冻结spec canonical SHA-256仍为`c12f7c4932072b9fa2352bbca733481c849121afa420f3cc53ce5002e80cb57f`，仓库内不存在真实registration/CURRENT/ledger状态文件。
+
+### 本轮新增错误记录
+
+| Error | Attempt | Resolution |
+|---|---:|---|
+| 首版并发测试在`run_shadow_snapshot`前使用Barrier，被进程级umask互斥提前串行导致超时 | 1 | 把Barrier移到旧状态读取完成后，稳定得到两个UPDATED红灯，再完成锁边界修复 |
+| 新行情锁错误测试首次补丁插入到上一测试循环末句之前，引发IndentationError | 1 | 立即检查局部结构，把原断言移回循环并重跑得到预期业务红灯；未触及生产代码 |
+| 完整pytest与裸Python兼容入口在30秒工具窗口内仍运行 | 1 | 按会话ID继续轮询，分别得到358项和332/332通过结果 |
+| 首次白名单暂存被沙箱禁止创建`.git/index.lock` | 1 | 使用获准的Git暂存权限重试；缓存文件排除断言与cached diff检查均通过 |
