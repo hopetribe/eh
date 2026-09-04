@@ -212,5 +212,11 @@
 | 提交前误用系统 `python3`，其环境缺少 pytest，且 `py_compile` 默认缓存目录不可写 | 1 | 改用 Homebrew pytest，并将 `PYTHONPYCACHEPREFIX` 指向 `/private/tmp/kk2-pycache` 后重试 |
 | 提交前完整回归在沙箱内有11项本地HTTP测试无法绑定临时端口 | 1 | 其余176项通过；按既定方式在允许回环端口绑定的环境重跑完整套件 |
 | 沙箱禁止创建 `.git/index.lock`，首次暂存未发生任何写入 | 1 | 使用用户已授权的 Git 暂存权限重试，并继续显式排除运行时行情文件 |
+| 服务器 `/home/eric/kk2` 是发布目录而非 Git 工作区 | 1 | 放弃远端 `git pull`，沿用版本标记、部署前备份和最小文件替换的可回滚发布方式 |
 | 快照测试首轮因 `_snapshot_run_materials` 尚未实现而收集失败 | 1 | 按TDD红灯确认后实现运行前快照与结束复核，相关测试及完整回归通过 |
 | 完整池fallback测试因外部池改为显式partial-history后失败 | 1 | 保留旧调用方fallback，同时生产覆盖对象使用完整/部分历史显式列表 |
+
+### 提交前兼容性复核
+
+- 恢复无 pytest 依赖的 `python3 tests/run_all.py` 入口：新增参数边界仍逐值覆盖，核心兼容测试 `152/152` 通过。
+- Homebrew pytest 完整套件在允许本地回环端口后 `179 passed`；参数化测试改为函数内逐值循环，仅测试计数变化，覆盖值未减少。

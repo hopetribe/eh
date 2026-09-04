@@ -4,7 +4,6 @@ import copy
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pandas as pd
-import pytest
 
 from gcn.backtest.engine import (
     PRESETS, _buy_hold, _exposure, _one_strategy, _perf, presets_for_version,
@@ -147,31 +146,48 @@ def test_run_backtest_applies_a_preset_initial_hard_stop():
     assert strategy["total"] == -20.0
 
 
-@pytest.mark.parametrize("invalid", [False, "0.15", -0.1, 0, 1, np.inf, np.nan])
-def test_initial_hard_stop_must_be_a_positive_fraction(invalid):
-    with pytest.raises(ValueError, match="hard_stop"):
-        _one_strategy(
-            _trade_frame(), ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
-            hard_stop=invalid,
+def _assert_value_error(message, callback):
+    try:
+        callback()
+    except ValueError as error:
+        assert message in str(error)
+    else:
+        raise AssertionError(f"expected ValueError containing {message!r}")
+
+
+def test_initial_hard_stop_must_be_a_positive_fraction():
+    for invalid in (False, "0.15", -0.1, 0, 1, np.inf, np.nan):
+        _assert_value_error(
+            "hard_stop",
+            lambda invalid=invalid: _one_strategy(
+                _trade_frame(), ["ENTRY"], ["EXIT"], cost=0,
+                max_hold=None, hard_stop=invalid,
+            ),
         )
 
 
-@pytest.mark.parametrize("column", ["OPEN", "CLOSE"])
-def test_strategy_rejects_non_finite_execution_prices(column):
-    res = _trade_frame()
-    res.loc[res.index[2], column] = np.nan
+def test_strategy_rejects_non_finite_execution_prices():
+    for column in ("OPEN", "CLOSE"):
+        res = _trade_frame()
+        res.loc[res.index[2], column] = np.nan
+        _assert_value_error(
+            "OPEN/CLOSE",
+            lambda res=res: _one_strategy(
+                res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+            ),
+        )
 
-    with pytest.raises(ValueError, match="OPEN/CLOSE"):
-        _one_strategy(res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None)
 
-
-@pytest.mark.parametrize("value", [0.0, -1.0])
-def test_strategy_rejects_non_positive_execution_prices(value):
-    res = _trade_frame()
-    res.loc[res.index[2], "OPEN"] = value
-
-    with pytest.raises(ValueError, match="OPEN/CLOSE"):
-        _one_strategy(res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None)
+def test_strategy_rejects_non_positive_execution_prices():
+    for value in (0.0, -1.0):
+        res = _trade_frame()
+        res.loc[res.index[2], "OPEN"] = value
+        _assert_value_error(
+            "OPEN/CLOSE",
+            lambda res=res: _one_strategy(
+                res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+            ),
+        )
 
 
 def test_hard_stop_boundary_is_inclusive_and_signal_has_priority():
