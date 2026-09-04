@@ -253,6 +253,54 @@
   - 新增与生产入口隔离的前向边界、确认状态重置、成熟计数、36/48月状态机、标签成熟和READY前白名单账本；候选仍未注册进`VERSIONS`、preset、API或Web UI。
   - 将`tests.test_shadow_validation`纳入裸Python兼容测试入口；同时修正雷达合成数据在周末及pandas 3.0下少一根工作日的时间相关测试假设。
   - 发布前定向回归：回测、shadow与雷达边界共`65 passed`；完整pytest在允许回环端口后`224 passed`；`python3 tests/run_all.py`为`197/197`通过。
+  - 上一轮提交/部署判定为有效进展：`f68baa2`已推送，生产引擎摘要一致、服务与公网v5 API均通过；本轮继续收口Phase 15，未把部署本身误判为总体目标完成。
+  - TDD循环16：构造“已接受文件与来源缓存被同步篡改”的红灯，证明单纯重叠比较可被绕过；registration升级为v2，冻结每标的首次行数、终点与精确摘要，并在每次更新前复核，相关3项通过。
+  - TDD循环17：先以缺失`CURRENT`红灯锁定不可变代际协议，再让首次注册在同父临时目录一次性写入base、registration、genesis generation、commit、CURRENT和派生ledger后整体rename；首次发布及故障注入2项通过。
+  - TDD循环18：先证明增量更新不会推进generation，再实现每个核心共同交易日一代、10标的一次提交、前代哈希绑定及commit→CURRENT顺序，单日前向代际测试通过。
+  - TDD循环19：以“首次晚启动已含5个前向日”对“cutoff基线后批量追加”的权威文件逐字节比较得到红灯；首次注册改为只冻结`date<=cutoff`，其余共同日逐日生成相同链，比较转绿。
+  - TDD循环20：先篡改CURRENT所指已提交generation的公开账本字段，确认接续流程未核对内容摘要；随后在读取CURRENT时强制验证generation文件SHA-256与引用哈希一致，篡改测试转绿。
+  - TDD循环21：删除CURRENT对应的commit标记，先确认旧流程仍会继续；随后要求commit存在且内容必须逐字节等于CURRENT的canonical JSON，缺标记与内容分叉均进入DATA_BLOCKED路径。
+  - TDD循环22：重算CURRENT、commit与当前generation哈希以伪造自洽尖端，但故意切断`previous_hash`；旧流程接受该分叉，新增前代唯一commit定位与链接核对后拒绝接续。
+  - TDD循环23：用“上游CSV暂时回退到基线”复现派生账本从1个前向日倒退到0的红灯；新增从base逐代验证commit、generation、previous_hash、canonical JSON、K线行、accepted摘要与公开账本绑定并重放的权威读取器，接续不再依赖可变CSV缓存；shadow update专项9项通过。
+  - TDD循环24：删除CURRENT得到硬失败红灯；重构头部发现为扫描全部commit、校验规范指针及generation摘要、要求序号从0连续且唯一，并由最高commit原子修复缺失/陈旧CURRENT。独立只读审查确认commit应为唯一权威选择器，孤儿generation与派生缓存不得决定状态。
+  - TDD循环25：验证registration声明的`sorted_compact_utf8_lf`与实际缩进JSON不一致得到红灯；首次发布改为canonical JSON，registration→genesis链首哈希与跨调用逐字节确定性测试保持通过。
+  - 新增崩溃恢复特征测试：存在“generation已落盘、commit未落盘”的同序号孤儿时，读取器保持旧权威头，随后正常追加生成唯一commit且不受孤儿内容影响。
+  - TDD循环26：在篡改每代公开账本后同步重算generation、commit与CURRENT哈希，证明仅校验链完整性仍可接受语义伪造；新增公开字段白名单、spec/source/bar摘要、完整性、`elapsed_common_sessions==sequence`、非负计数及protocol/public state交叉校验，重哈希伪造转为拒绝；同时确认非头部generation摘要也逐代检查。
+  - TDD循环27：把成熟计数改成另一个合法非负整数并重算整条尖端引用，得到廉价字段校验无法识别的红灯；权威加载完成后现以重放帧完整重算头部pre-READY账本并逐字段比较，杜绝自洽哈希下的指标伪造。
+  - 将调用节奏确定性验证扩为三路径：首次输入已含5日、基线后一次批量追加5日、基线后逐日调用5次；registration、base、全部generation/commit与CURRENT逐字节一致。
+  - TDD循环28：runner级2:1 provider调整测试先因重叠值变化被拒绝；接入冻结的1ppm统一OHLC中位缩放与独立成交量缩放后，重叠行恢复权威精确值、新行转换到首次注册价格基准，局部非统一修订仍按DATA_BLOCKED拒绝；复权专项13项及runner专项通过。
+  - TDD循环29：运行环境漂移测试先因缺少环境身份接口失败；registration现冻结Python实现/精确版本、NumPy、pandas、操作系统与机器架构，接续前严格比较，模拟pandas版本变化会拒绝续写且确定性字节测试保持通过。
+  - TDD循环30：用两个同步线程并发首次注册，稳定复现两次发布重叠与目录替换失败；新增实验哈希级进程内互斥和相邻`flock`，覆盖首次创建与增量全过程，两调用串行得到同一账本，runner并发/更新专项18项通过。
+  - TDD循环31：registration唯一schema断言先发现四组旧顶层兼容副本；移除重复source/initial摘要，统一以`implementation`和`base`为权威，新增严格顶层、序列化协议、标的集合、base字段/哈希/行数及环境身份验证；相关19项通过。
+  - TDD循环32：首次发布的文件/目录fsync测试先因无耐久写接口失败；新增统一原子字节写入，所有权威/派生文件均执行flush+文件fsync、rename、父目录fsync，首次staging各子目录和整体rename也同步目录；并发与落盘专项通过。
+  - TDD循环33：把registration仅改为等价缩进JSON，旧流程直到genesis链接才报错；现读取入口先验证UTF-8/有限JSON并要求原始字节精确等于canonical编码，非规范字节在状态重放前即被拒绝。
+  - TDD循环34：权威bars等价缩进编码测试先被接受；反序列化现重新生成canonical字节并逐字节比较，base编码、float hex与registration声明保持可验证一致。
+  - TDD循环35：可解析但非规范的缩写十六进制浮点先被接受；base与generation的每个OHLCV现必须精确等于解析值的`float.hex()`输出，避免同值多编码破坏跨路径字节唯一性。
+  - 正式评估纯模块完成独立交付与复审：纯`calculate_evaluation`不产生状态，受控`formal_evaluate`验证完整注册spec、READY/精确端点/零次、核心顺序、首列成交、订单工件与从路径推导的armed/affected计数，并只返回CAS 0→1意图；35项新测试及联合104项通过，未读取真实候选表现。
+  - TDD循环36：源码清单精确断言先发现复权校验器与正式评估器未被注册摘要覆盖；两者现加入`ALGORITHM_SOURCE_PATHS`，后续任何规则/评估公式改动都会阻断既有实验接续。
+  - TDD循环37：私有协议快照测试先因仅有公开账本接口失败；新增`_build_pre_ready_snapshot`，公开层继续严格只返回预注册计数，generation私有层独立保留actual start、锁窗、成熟摘要、事件/标签、评估次数与结果槽位。
+  - TDD循环38：36/48月状态机测试先发现失败的36月判断只存在调用栈中；现每次到达36月固定端点都会生成链上`checkpoint_36`（端点、七项成熟计数、pass），48月锁窗必须携带同一个失败检查点，并显式记录locked_months。
+  - TDD循环39：runner的READY消费测试先因无订单工件/CAS胶水失败；现从权威锁窗重算双策略OPEN成交mask与挑战者退出原因，绑定价格、日期、symbol顺序、spec/source/bar摘要生成订单工件，正式评估仅在实验锁内以READY/0次及链上36月checkpoint调用，并把CAS 0→1、工件hash与完整结果原子写入同一交易日generation。
+  - 以2026-09-15至2029-09-14的合成锁窗验证真实订单构建链：10只行序固定、首列无OPEN成交、矩阵维度一致，重新计算的订单工件摘要逐字节一致；shadow validation/revision/evaluation联合回归当前106项通过。
+  - TDD循环40：篡改spec引用的功效校准JSON而保持spec/sidecar不变，旧加载器仍接受；`load_spec`现限制同目录工件名、严格解析工件、核对其独立sidecar与spec内`canonical_json_sha256`，候选选择证据不再只是未验证的路径字符串。
+  - TDD循环41：重启/无新增/继续追加的runner级测试先复现终态被重建为READY/0并重复正式评估；现以权威上一代`formal_evaluation_count/evaluation_result`驱动状态承接，只有首次READY/0调用评估器，后续generation保持同一结果与订单摘要。
+  - TDD循环42：带锁后K线的测试证明订单工件曾绑定持续增长的全量bar hash；现逐标的只绑定`<=locked_end`的canonical bar hash，锁后数据不能改变固定评估工件。
+  - TDD循环43：formal evaluator原先把日历expected日期误当成必须存在的交易日；现同时绑定`locked_end`与其后第一个共同交易日，接受expected当日或之前最后共同交易日，任意提前或晚于expected均阻断。
+  - TDD循环44：删除公开`source_root`覆盖入口，算法摘要只能来自实际import仓库；同轮把spec读取收敛为加锁前唯一一次，避免两次读取落入不同实验锁。
+  - TDD循环45：整链重哈希后篡改非头generation合法计数/state/checkpoint的测试先穿透浅校验；现一次因果策略重放预计算全部前缀摘要，并逐代完整重建ledger+protocol，强制评估次数、36月checkpoint、锁窗和正式结果不可逆，复杂度保持`O(symbols×sessions)`。
+  - TDD循环46：1.025→1.037逐日复权与1.037批量复权先产生不同float.hex；现所有新接受OHLCV规范为12位有效数字，真正uniform换基准逐日/批量逐字节一致。1ppm仅为外层上限；带新增行而比例离散超过数值噪声时fail-closed DATA_BLOCKED。
+  - TDD循环47：新增commit尾丢失检测和派生accepted_bars缓存修复；有效但超前的CURRENT不再静默回退，派生CSV损坏或提交后写失败可由权威链恢复。
+  - TDD循环48：五个READY发布故障点覆盖generation写前/后、commit写前/后及CURRENT后派生缓存失败；恢复后仅一个权威CAS结果。两个独立进程竞争同一增量也只产生一个session generation。
+  - TDD循环49：性能审计证明前缀成熟计数与事件列表仍可能二次增长；现改为点增量加单次`cumsum`、共享事件前缀、标签路径缓存及两遍流式generation校验。250/500/1000个合成前向会话耗时约1.285/1.583/2.202秒、峰值内存1.69/2.17/3.63MiB，增长接近线性。
+  - TDD循环50：把正式结果改成合法`eligible=true`并重哈希整条链曾可穿透carry校验；现只在唯一0→1转换代重建固定订单并调用一次`formal_evaluate`，持久化结果必须与重算canonical bytes完全一致，后续代不重复bootstrap。
+  - TDD循环51：共同伪造周末/休市日或同步漏掉正常交易日曾可污染样本时钟；新增离线NYSE日历工件，2026～2028使用官方闭市表、2029～2030按Rule 7.2冻结投影，并要求cutoff后会话是严格前缀。日历canonical摘要为`bbd5dad9dae12c34afd65adf61e63b44fde84b5e6d2ab7271fab00f4f296f398`，原始文件摘要为`8f11d717082a1d15732e7c04803307144e30ea98a069920dd63c80b7fa9a625e`。
+  - 同轮封闭终态生命周期：到达`ELIGIBLE_FOR_V6_IMPLEMENTATION`、`REJECTED_KEEP_V5`或`INCONCLUSIVE_COVERAGE_KEEP_V5`后，权威链与accepted-bars缓存停在首个终态会话；重启只重放、验真和修复派生缓存，不再读取或追加incoming。
+  - 最终影子validation/revision/evaluation联合回归`133 passed`；裸Python兼容入口在本机权限环境`297/297`全部通过。
+  - 最终静态编译、`git diff --check`均通过；允许本地回环绑定的完整pytest回归为`324 passed`。
+  - TDD循环52：真实构造锁窗后第59日快照并写入generation，红灯证明私有协议会提前持久化已成熟的20日及未完整60日收益/MFE/MAE；现保留事件身份但把READY前全部20/60标签值盲化为`null`，只在唯一READY→正式终态事务内重算并揭示。联合影子专项增至`134 passed`，正式评估仍只消费一次。
+  - 提交/部署终审确认当前核心10股仍没有`2026-09-05`后的共同交易日，也不存在真实shadow state；本次只固化和同步影子协议模块，不初始化账本、不改变正式v5信号/API/UI。
+  - 建账前运维门槛已显式保留为Phase 15未完成项：固定长期运行venv、在行情锁下校验`adjustment=adjusted`及sidecar/CSV摘要一致，并通过显式初始化门禁等待首个合法共同交易日。
+  - 最终发布回归：影子三模块`134 passed`，完整pytest`325 passed`，裸Python兼容入口`298/298`；静态编译、`git diff --check`、主spec/sidecar和NYSE日历双摘要校验均通过。
 
 ### 本阶段新增错误记录
 
@@ -263,3 +311,9 @@
 | spec扩充后sidecar与代码注册哈希仍为旧值，8项专项校验失败 | 1 | 计算canonical JSON摘要并同时更新两处注册值；专项`33 passed` |
 | 沙箱内完整回归有11项HTTP测试无法绑定回环端口 | 1 | 在获准的本机测试环境重跑，完整`224 passed` |
 | 雷达合成测试假设周末`bdate_range(..., periods=30)`仍返回30根；pandas 3.0只返回29根 | 1 | 先回滚到最近工作日再构造固定30根，并按生产日龄公式断言 |
+| 本轮定向测试误用系统Python，其环境无pytest | 1 | 恢复使用`PYTHONPATH=. /opt/homebrew/bin/pytest`执行逐项TDD |
+| 一次复权专项测试调用误填不存在的workdir，进程未启动 | 1 | 纠正为仓库绝对路径后重跑，13项全部通过 |
+| 一次registration专项组合测试再次误填不存在的workdir，进程未启动 | 1 | 立即纠正绝对路径并完成19项回归；后续命令复用固定仓库路径 |
+| 首次点名源码清单测试时使用了不存在的测试函数名 | 1 | 用`rg`定位实际函数名后重跑，先得到预期红灯再完成源码覆盖修复 |
+| 裸Python完整入口在沙箱内有11项本地HTTP绑定及3项Futu日志目录权限失败 | 1 | 按既定审批在本机权限环境重跑，`272/272`通过；无业务断言失败 |
+| 发布前静态检查误用不存在的`/opt/homebrew/bin/python3` | 1 | 从pytest shebang定位固定解释器`/opt/homebrew/opt/python@3.11/bin/python3.11`，静态编译与摘要复核随后通过 |

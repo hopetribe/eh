@@ -17,6 +17,25 @@ import pandas as pd
 
 
 _BAR_COLUMNS = ("open", "high", "low", "close", "volume")
+# 12位有效数字远细于1ppm策略容差，但足以抹平等价比例运算的float末位。
+_REBASE_SIGNIFICANT_DIGITS = 12
+# 允许已规范值再次作为overlap时产生的最大舍入扩散；远小于1ppm。
+_REBASE_NUMERIC_NOISE_PPM = float(
+    2 * 10 ** (1 - _REBASE_SIGNIFICANT_DIGITS) * 1_000_000
+)
+
+_OBSERVATION_CALENDAR_FILE = (
+    "shadow_specs/nyse-us-equities-sessions-20260906-20301231.json"
+)
+_OBSERVATION_CALENDAR_SHA256 = (
+    "bbd5dad9dae12c34afd65adf61e63b44fde84b5e6d2ab7271fab00f4f296f398"
+)
+_OBSERVATION_CALENDAR_FIELDS = frozenset({
+    "schema_version", "calendar_id", "market", "coverage_start",
+    "coverage_end", "session_rule", "full_day_closures", "sources",
+    "projection_policy", "unscheduled_closure_policy",
+    "required_observation_end",
+})
 
 _TOP_LEVEL_FIELDS = frozenset({
     "schema_version",
@@ -355,7 +374,158 @@ def load_spec(path: str | Path) -> dict[str, Any]:
             f"spec哈希不匹配: expected={expected_hash}, actual={actual_hash}"
         )
     validate_spec(spec)
+    calibration = spec["candidate_selection_audit"]
+    artifact_name = calibration["power_calibration_artifact"]
+    if (not isinstance(artifact_name, str)
+            or Path(artifact_name).name != artifact_name):
+        raise ValueError("功效校准工件名无效")
+    artifact_path = spec_path.parent / artifact_name
+    try:
+        artifact = parse_spec_json(artifact_path.read_text(encoding="utf-8"))
+        detached_hash = artifact_path.with_suffix(".sha256").read_text(
+            encoding="ascii"
+        ).strip()
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise ValueError("功效校准工件缺失或格式无效") from error
+    expected_artifact_hash = calibration["power_calibration_sha256"]
+    actual_artifact_hash = canonical_spec_hash(artifact)
+    if (calibration["power_calibration_hash_method"] != "canonical_json_sha256"
+            or detached_hash != expected_artifact_hash
+            or not hmac.compare_digest(
+                actual_artifact_hash, expected_artifact_hash,
+            )):
+        raise ValueError(
+            "功效校准工件哈希不匹配: "
+            f"expected={expected_artifact_hash}, actual={actual_artifact_hash}"
+        )
     return spec
+
+
+def _iso_date(value: Any, name: str) -> pd.Timestamp:
+    if not isinstance(value, str):
+        raise ValueError(f"冻结美股交易日历{name}必须是ISO日期")
+    try:
+        parsed = pd.Timestamp(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"冻结美股交易日历{name}必须是ISO日期") from error
+    if (parsed.tz is not None or parsed != parsed.normalize()
+            or parsed.date().isoformat() != value):
+        raise ValueError(f"冻结美股交易日历{name}必须使用YYYY-MM-DD")
+    return parsed
+
+
+def load_observation_calendar() -> dict[str, Any]:
+    """加载并验证覆盖完整v6观察窗的离线NYSE会话工件。"""
+    path = Path(__file__).resolve().parent / _OBSERVATION_CALENDAR_FILE
+    try:
+        calendar = parse_spec_json(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
+        raise ValueError("冻结美股交易日历缺失或格式无效") from error
+    actual_hash = canonical_spec_hash(calendar)
+    if not hmac.compare_digest(actual_hash, _OBSERVATION_CALENDAR_SHA256):
+        raise ValueError(
+            "冻结美股交易日历哈希不匹配: "
+            f"expected={_OBSERVATION_CALENDAR_SHA256}, actual={actual_hash}"
+        )
+    _require_fields(calendar, _OBSERVATION_CALENDAR_FIELDS, "calendar")
+    expected_scalars = {
+        "schema_version": "gcn-frozen-us-equities-calendar-v1",
+        "calendar_id": "nyse-us-equities-sessions-20260906-20301231",
+        "market": "NYSE_US_CASH_EQUITIES",
+        "coverage_start": "2026-09-06",
+        "coverage_end": "2030-12-31",
+        "session_rule":
+            "monday_through_friday_excluding_full_day_closures",
+        "projection_policy":
+            "2029_through_2030_dates_are_deterministic_rule_7_2_projections",
+        "unscheduled_closure_policy":
+            "fail_closed_until_a_new_registered_calendar_is_adopted",
+        "required_observation_end": "2030-12-09",
+    }
+    for field, expected in expected_scalars.items():
+        if calendar.get(field) != expected:
+            raise ValueError(f"冻结美股交易日历{field}不匹配")
+    sources = calendar.get("sources")
+    if (not isinstance(sources, list) or len(sources) != 2
+            or any(not isinstance(source, dict) or set(source) != {
+                "authority", "scope", "url",
+            } for source in sources)):
+        raise ValueError("冻结美股交易日历来源元数据无效")
+    coverage_start = _iso_date(calendar["coverage_start"], "coverage_start")
+    coverage_end = _iso_date(calendar["coverage_end"], "coverage_end")
+    required_end = _iso_date(
+        calendar["required_observation_end"], "required_observation_end",
+    )
+    if not coverage_start <= required_end <= coverage_end:
+        raise ValueError("冻结美股交易日历未覆盖完整观察窗")
+    closures_value = calendar.get("full_day_closures")
+    if not isinstance(closures_value, list):
+        raise ValueError("冻结美股交易日历休市日必须是列表")
+    closures = pd.DatetimeIndex([
+        _iso_date(value, "full_day_closures") for value in closures_value
+    ])
+    if (closures.has_duplicates or not closures.is_monotonic_increasing
+            or (closures.dayofweek >= 5).any()
+            or (closures < coverage_start).any()
+            or (closures > coverage_end).any()):
+        raise ValueError("冻结美股交易日历休市日无效")
+    return calendar
+
+
+def validate_observation_sessions(
+    sessions: pd.DatetimeIndex, *, cutoff: pd.Timestamp,
+    maximum_accrual_end: pd.Timestamp,
+    outcome_embargo_sessions: int,
+) -> None:
+    """要求cutoff后的共同会话是冻结NYSE日历从起点起的严格前缀。"""
+    if not isinstance(sessions, pd.DatetimeIndex):
+        raise ValueError("前向会话必须是DatetimeIndex")
+    calendar = load_observation_calendar()
+    cutoff = pd.Timestamp(cutoff)
+    coverage_start = _iso_date(calendar["coverage_start"], "coverage_start")
+    coverage_end = _iso_date(calendar["coverage_end"], "coverage_end")
+    expected_start = cutoff + pd.Timedelta(days=1)
+    if expected_start != coverage_start:
+        raise ValueError("冻结美股交易日历与signal cutoff不连续")
+    maximum_accrual_end = pd.Timestamp(maximum_accrual_end)
+    if (type(outcome_embargo_sessions) is not int
+            or outcome_embargo_sessions <= 0):
+        raise ValueError("结果禁运共同交易日数必须是正整数")
+    closures = pd.DatetimeIndex(pd.to_datetime(calendar["full_day_closures"]))
+    post_lock_sessions = pd.bdate_range(
+        maximum_accrual_end + pd.Timedelta(days=1), coverage_end,
+    ).difference(closures)
+    required_end = _iso_date(
+        calendar["required_observation_end"], "required_observation_end",
+    )
+    if (len(post_lock_sessions) < outcome_embargo_sessions
+            or post_lock_sessions[outcome_embargo_sessions - 1] != required_end):
+        raise ValueError("冻结美股交易日历未覆盖完整观察窗")
+    if sessions.empty:
+        return
+    if sessions[-1] > coverage_end:
+        raise ValueError("前向会话超过冻结美股交易日历覆盖终点，DATA_BLOCKED")
+    expected = pd.bdate_range(coverage_start, sessions[-1]).difference(closures)
+    if not sessions.equals(expected):
+        unexpected = sessions.difference(expected)
+        missing = expected.difference(sessions)
+        details = []
+        if len(unexpected):
+            details.append(
+                "unexpected=" + ",".join(
+                    value.date().isoformat() for value in unexpected[:5]
+                )
+            )
+        if len(missing):
+            details.append(
+                "missing=" + ",".join(
+                    value.date().isoformat() for value in missing[:5]
+                )
+            )
+        raise ValueError(
+            "前向会话不构成冻结美股交易日历的严格前缀，DATA_BLOCKED: "
+            + "; ".join(details)
+        )
 
 
 def _validate_bar_frame(frame: pd.DataFrame, label: str) -> pd.DataFrame:
@@ -402,6 +572,157 @@ def canonical_bar_hash(frame: pd.DataFrame) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _canonicalize_rebased_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """消除等价缩放路径造成的IEEE-754末位差异。"""
+    canonical = frame.copy()
+    for column in _BAR_COLUMNS:
+        canonical[column] = [
+            0.0 if value == 0 else float(
+                format(float(value), f".{_REBASE_SIGNIFICANT_DIGITS}g")
+            )
+            for value in canonical[column]
+        ]
+    return _validate_bar_frame(canonical, "rebased incoming bars")
+
+
+def rebase_adjusted_incoming(
+    accepted: pd.DataFrame | None,
+    incoming: pd.DataFrame,
+    tolerance_ppm: int = 1,
+) -> tuple[pd.DataFrame, dict[str, int | float | bool]]:
+    """把 provider-adjusted 输入统一缩放到已接受K线的价格基准。
+
+    价格因子是重叠 OHLC 的 ``accepted / incoming`` 中位数；成交量因子
+    独立取正值对的同一中位数。每个比例都必须在 ``tolerance_ppm`` 内，
+    成交量零值必须成对。有新增行时，比例扩散还必须只来自12位规范化的
+    数值噪声；否则没有唯一可冻结基准并按 ``DATA_BLOCKED`` 失败关闭。
+    返回帧保留既有重叠行的精确值，并把全部新值规范为12位有效数字；
+    第二个返回值是可直接写入 JSON generation 的因子审计元数据。
+    ``accepted is None`` 表示首次注册，规范化输入且两个因子均为 1。
+    """
+    if type(tolerance_ppm) is not int or tolerance_ppm < 0:
+        raise ValueError("tolerance_ppm必须是非负整数")
+    current = _validate_bar_frame(incoming, "incoming bars")
+    if accepted is None:
+        return _canonicalize_rebased_frame(current), {
+            "overlap_rows": 0,
+            "price_factor": 1.0,
+            "volume_factor": 1.0,
+            "price_rebased": False,
+            "volume_rebased": False,
+            "rebase_applied": False,
+        }
+
+    previous = _validate_bar_frame(accepted, "accepted bars")
+    overlap = previous.index.intersection(current.index)
+    if overlap.empty:
+        raise ValueError(
+            "incoming bars与既有区间没有可验证的重叠日期，DATA_BLOCKED"
+        )
+    has_additions = bool((current.index > previous.index[-1]).any())
+    old_prices = previous.loc[
+        overlap, ("open", "high", "low", "close")
+    ].to_numpy(dtype=float)
+    new_prices = current.loc[
+        overlap, ("open", "high", "low", "close")
+    ].to_numpy(dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        price_ratios = old_prices / new_prices
+        price_factor = float(np.median(price_ratios))
+    if (not np.isfinite(price_ratios).all()
+            or not np.isfinite(price_factor) or price_factor <= 0):
+        raise ValueError("价格缩放因子无效，DATA_BLOCKED")
+    price_deviation_ppm = np.abs(price_ratios / price_factor - 1.0) * 1_000_000
+    worst_price_position = np.unravel_index(
+        int(np.argmax(price_deviation_ppm)), price_deviation_ppm.shape,
+    )
+    worst_price_date = overlap[worst_price_position[0]].date().isoformat()
+    worst_price_field = ("open", "high", "low", "close")[
+        worst_price_position[1]
+    ]
+    max_price_deviation_ppm = float(price_deviation_ppm[worst_price_position])
+    price_diagnostic = (
+        f"{worst_price_date} {worst_price_field}, "
+        f"max_deviation_ppm={max_price_deviation_ppm:.12g}, "
+        f"tolerance_ppm={tolerance_ppm}"
+    )
+    if (price_deviation_ppm > tolerance_ppm).any():
+        raise ValueError(
+            f"价格修订非统一缩放，DATA_BLOCKED: {price_diagnostic}"
+        )
+    if (has_additions
+            and (price_deviation_ppm > _REBASE_NUMERIC_NOISE_PPM).any()):
+        raise ValueError(
+            "价格缩放在容差内但新增行基准不唯一，DATA_BLOCKED: "
+            + price_diagnostic
+        )
+
+    old_volume = previous.loc[overlap, "volume"].to_numpy(dtype=float)
+    new_volume = current.loc[overlap, "volume"].to_numpy(dtype=float)
+    mismatched_zero = (old_volume == 0) != (new_volume == 0)
+    if mismatched_zero.any():
+        mismatch_date = overlap[int(np.flatnonzero(mismatched_zero)[0])]
+        raise ValueError(
+            "成交量零值未成对，DATA_BLOCKED: "
+            + mismatch_date.date().isoformat()
+        )
+    positive_pairs = (old_volume > 0) & (new_volume > 0)
+    if positive_pairs.any():
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            volume_ratios = (
+                old_volume[positive_pairs] / new_volume[positive_pairs]
+            )
+            volume_factor = float(np.median(volume_ratios))
+        if (not np.isfinite(volume_ratios).all()
+                or not np.isfinite(volume_factor) or volume_factor <= 0):
+            raise ValueError("成交量缩放因子无效，DATA_BLOCKED")
+        volume_deviation_ppm = np.abs(
+            volume_ratios / volume_factor - 1.0
+        ) * 1_000_000
+        worst_volume_position = int(np.argmax(volume_deviation_ppm))
+        worst_volume_date = overlap[positive_pairs][
+            worst_volume_position
+        ].date().isoformat()
+        max_volume_deviation_ppm = float(
+            volume_deviation_ppm[worst_volume_position]
+        )
+        volume_diagnostic = (
+            f"{worst_volume_date} volume, "
+            f"max_deviation_ppm={max_volume_deviation_ppm:.12g}, "
+            f"tolerance_ppm={tolerance_ppm}"
+        )
+        if (volume_deviation_ppm > tolerance_ppm).any():
+            raise ValueError(
+                f"成交量修订非统一缩放，DATA_BLOCKED: {volume_diagnostic}"
+            )
+        if (has_additions
+                and (volume_deviation_ppm > _REBASE_NUMERIC_NOISE_PPM).any()):
+            raise ValueError(
+                "成交量缩放在容差内但新增行基准不唯一，DATA_BLOCKED: "
+                + volume_diagnostic
+            )
+    else:
+        if (current["volume"] != 0).any():
+            raise ValueError("无正成交量对时必须全零，DATA_BLOCKED")
+        volume_factor = 1.0
+
+    rebased = current.copy()
+    rebased.loc[:, ("open", "high", "low", "close")] *= price_factor
+    rebased.loc[:, "volume"] *= volume_factor
+    rebased = _canonicalize_rebased_frame(rebased)
+    rebased.loc[overlap, _BAR_COLUMNS] = previous.loc[overlap, _BAR_COLUMNS]
+    price_rebased = price_factor != 1.0
+    volume_rebased = volume_factor != 1.0
+    return rebased, {
+        "overlap_rows": int(len(overlap)),
+        "price_factor": price_factor,
+        "volume_factor": volume_factor,
+        "price_rebased": price_rebased,
+        "volume_rebased": volume_rebased,
+        "rebase_applied": price_rebased or volume_rebased,
+    }
 
 
 def merge_accepted_bars(
