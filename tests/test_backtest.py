@@ -4,6 +4,7 @@ import copy
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pandas as pd
+import pytest
 
 from gcn.backtest.engine import (
     PRESETS, _buy_hold, _exposure, _one_strategy, _perf, presets_for_version,
@@ -111,6 +112,82 @@ def test_exit_bar_not_exposed_and_max_hold_is_exact():
     res.loc[:, "EXIT"] = False
     bt = _one_strategy(res, ["ENTRY"], ["EXIT"], cost=0, max_hold=1)
     assert bt["trades"][0]["hold"] == 1
+
+
+def test_initial_hard_stop_confirms_at_close_and_exits_at_next_open():
+    res = _trade_frame(5)
+    res["OPEN"] = [10.0, 100.0, 80.0, 80.0, 80.0]
+    res["CLOSE"] = [10.0, 84.0, 80.0, 80.0, 80.0]
+    res.loc[res.index[0], "ENTRY"] = True
+
+    bt = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None, hard_stop=0.15
+    )
+
+    trade = bt["trades"][0]
+    assert trade["exit_reason"] == "hard_stop"
+    assert trade["j"] == 2
+    assert np.isclose(trade["ret"], -0.20)
+
+
+def test_run_backtest_applies_a_preset_initial_hard_stop():
+    res = _trade_frame(5)
+    res["OPEN"] = [10.0, 100.0, 80.0, 120.0, 120.0]
+    res["CLOSE"] = [10.0, 84.0, 100.0, 120.0, 120.0]
+    res.loc[res.index[0], "ENTRY"] = True
+    presets = [{
+        "name": "带初始止损", "entry": ["ENTRY"], "exit": ["EXIT"],
+        "hard_stop": 0.15,
+    }]
+
+    report = run_backtest(res, cost=0, presets=presets)
+
+    strategy = report["strategies"][0]
+    assert strategy["trades"] == 1
+    assert strategy["total"] == -20.0
+
+
+@pytest.mark.parametrize("invalid", [False, "0.15", -0.1, 0, 1, np.inf, np.nan])
+def test_initial_hard_stop_must_be_a_positive_fraction(invalid):
+    with pytest.raises(ValueError, match="hard_stop"):
+        _one_strategy(
+            _trade_frame(), ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+            hard_stop=invalid,
+        )
+
+
+@pytest.mark.parametrize("column", ["OPEN", "CLOSE"])
+def test_strategy_rejects_non_finite_execution_prices(column):
+    res = _trade_frame()
+    res.loc[res.index[2], column] = np.nan
+
+    with pytest.raises(ValueError, match="OPEN/CLOSE"):
+        _one_strategy(res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None)
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0])
+def test_strategy_rejects_non_positive_execution_prices(value):
+    res = _trade_frame()
+    res.loc[res.index[2], "OPEN"] = value
+
+    with pytest.raises(ValueError, match="OPEN/CLOSE"):
+        _one_strategy(res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None)
+
+
+def test_hard_stop_boundary_is_inclusive_and_signal_has_priority():
+    res = _trade_frame(4)
+    res["OPEN"] = [10.0, 100.0, 85.0, 85.0]
+    res["CLOSE"] = [10.0, 85.0, 85.0, 85.0]
+    res.loc[res.index[0], "ENTRY"] = True
+    res.loc[res.index[1], "EXIT"] = True
+
+    bt = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+        trail=0.10, hard_stop=0.15,
+    )
+
+    assert bt["trades"][0]["exit_reason"] == "signal"
+    assert bt["trades"][0]["j"] == 2
 
 
 def test_perf_uses_initial_capital_and_dollar_profit_factor():
