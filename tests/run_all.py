@@ -9,7 +9,7 @@ MODULES = ["tests.test_tdx", "tests.test_golden", "tests.test_indicators",
            "tests.test_recipe", "tests.test_backtest", "tests.test_cli",
            "tests.test_server", "tests.test_data_service",
            "tests.test_screener", "tests.test_radar", "tests.test_radar_email",
-           "tests.test_webui"]
+           "tests.test_webui", "tests.test_shadow_validation"]
 
 
 def main():

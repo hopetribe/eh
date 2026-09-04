@@ -99,6 +99,96 @@ def test_strategy_terminal_close_cost_and_exposure():
     assert np.isclose(_exposure(bt, res), 3 / 4)
 
 
+def test_mark_terminal_policy_keeps_open_position_unsettled():
+    res = _trade_frame(4)
+    res.loc[res.index[0], "ENTRY"] = True
+
+    bt = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0.01, max_hold=None,
+        terminal_policy="mark",
+    )
+
+    assert bt["trades"] == []
+    assert np.isclose(bt["equity"][-1], (0.99 / 11.0) * 13.5)
+
+
+def test_terminal_policy_rejects_unknown_value():
+    _assert_value_error(
+        "terminal_policy",
+        lambda: _one_strategy(
+            _trade_frame(), ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+            terminal_policy="ignore",
+        ),
+    )
+
+
+def test_mark_terminal_policy_reports_open_and_pending_exit_state():
+    res = _trade_frame(4)
+    res.loc[res.index[0], "ENTRY"] = True
+    res.loc[res.index[-1], "EXIT"] = True
+
+    state = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+        terminal_policy="mark",
+    )["state"]
+
+    assert state["position"] == "open"
+    assert state["entry_i"] == 1
+    assert state["entry_open"] == 11.0
+    assert state["highest_close"] == 13.5
+    assert state["pending_buy"] is False
+    assert state["pending_sell_reason"] == "signal"
+
+
+def test_mark_state_reports_pending_profit_lock_without_settling_it():
+    res = _trade_frame(3)
+    res["OPEN"] = [10.0, 100.0, 110.0]
+    res["CLOSE"] = [10.0, 120.0, 104.0]
+    res.loc[res.index[0], "ENTRY"] = True
+
+    bt = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+        trail=0.20, profit_keep=0.20, terminal_policy="mark",
+    )
+    state = bt["state"]
+
+    assert bt["trades"] == []
+    assert state["pending_sell_reason"] == "profit_lock"
+    assert state["profit_armed"] is True
+    assert np.isclose(state["profit_floor"], 104.0)
+    assert np.isclose(state["mark_equity"], 1.04)
+
+
+def test_keep50_profit_floor_uses_the_frozen_rule_cost():
+    res = _trade_frame(3)
+    res["OPEN"] = [10.0, 100.0, 110.0]
+    res["CLOSE"] = [10.0, 120.0, 110.05]
+    res.loc[res.index[0], "ENTRY"] = True
+
+    state = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0.001, max_hold=None,
+        trail=0.20, profit_keep=0.50, terminal_policy="mark",
+    )["state"]
+    break_even = 100.0 / (1 - 0.001) ** 2
+
+    assert state["pending_sell_reason"] == "profit_lock"
+    assert state["profit_armed"] is True
+    assert np.isclose(state["profit_floor"], break_even + 0.50 * (120 - break_even))
+
+
+def test_mark_state_distinguishes_a_pending_entry_from_flat_cash():
+    res = _trade_frame(3)
+    res.loc[res.index[-1], "ENTRY"] = True
+
+    state = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+        terminal_policy="mark",
+    )["state"]
+
+    assert state["status"] == "pending_entry"
+    assert state["pending_buy"] is True
+
+
 def test_exit_bar_not_exposed_and_max_hold_is_exact():
     res = _trade_frame(5)
     res.loc[res.index[0], "ENTRY"] = True
@@ -129,6 +219,69 @@ def test_initial_hard_stop_confirms_at_close_and_exits_at_next_open():
     assert np.isclose(trade["ret"], -0.20)
 
 
+def test_profit_lock_arms_at_trail_gain_and_exits_at_next_open():
+    res = _trade_frame(5)
+    res["OPEN"] = [10.0, 100.0, 110.0, 90.0, 90.0]
+    res["CLOSE"] = [10.0, 120.0, 104.0, 90.0, 90.0]
+    res.loc[res.index[0], "ENTRY"] = True
+
+    bt = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+        trail=0.20, profit_keep=0.20,
+    )
+
+    trade = bt["trades"][0]
+    assert trade["exit_reason"] == "profit_lock"
+    assert trade["j"] == 3
+    assert np.isclose(trade["ret"], -0.10)
+
+
+def test_existing_trail_owns_a_same_day_profit_floor_breach():
+    res = _trade_frame(5)
+    res["OPEN"] = [10.0, 100.0, 100.0, 90.0, 90.0]
+    res["CLOSE"] = [10.0, 120.0, 90.0, 90.0, 90.0]
+    res.loc[res.index[0], "ENTRY"] = True
+
+    trade = _one_strategy(
+        res, ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+        trail=0.20, profit_keep=0.20,
+    )["trades"][0]
+
+    assert trade["exit_reason"] == "trail"
+
+
+def test_profit_keep_requires_a_trailing_stop():
+    _assert_value_error(
+        "profit_keep",
+        lambda: _one_strategy(
+            _trade_frame(), ["ENTRY"], ["EXIT"], cost=0, max_hold=None,
+            profit_keep=0.20,
+        ),
+    )
+
+
+def test_profit_keep_must_be_a_positive_fraction():
+    for invalid in (False, "0.20", -0.1, 0, 1, np.inf, np.nan):
+        _assert_value_error(
+            "profit_keep",
+            lambda invalid=invalid: _one_strategy(
+                _trade_frame(), ["ENTRY"], ["EXIT"], cost=0,
+                max_hold=None, trail=0.20, profit_keep=invalid,
+            ),
+        )
+
+
+def test_profit_keep_requires_a_valid_trailing_fraction():
+    for invalid in (False, "0.20", -0.1, 0, 1, np.inf, np.nan):
+        _assert_value_error(
+            "trail",
+            lambda invalid=invalid: _one_strategy(
+                _trade_frame(), ["ENTRY"], ["EXIT"], cost=0,
+                max_hold=None, trail=invalid, profit_keep=0.20,
+            ),
+        )
+
+
 def test_run_backtest_applies_a_preset_initial_hard_stop():
     res = _trade_frame(5)
     res["OPEN"] = [10.0, 100.0, 80.0, 120.0, 120.0]
@@ -144,6 +297,21 @@ def test_run_backtest_applies_a_preset_initial_hard_stop():
     strategy = report["strategies"][0]
     assert strategy["trades"] == 1
     assert strategy["total"] == -20.0
+
+
+def test_run_backtest_applies_a_preset_profit_lock():
+    res = _trade_frame(5)
+    res["OPEN"] = [10.0, 100.0, 110.0, 90.0, 70.0]
+    res["CLOSE"] = [10.0, 120.0, 104.0, 90.0, 70.0]
+    res.loc[res.index[0], "ENTRY"] = True
+    presets = [{
+        "name": "盈利保护", "entry": ["ENTRY"], "exit": ["EXIT"],
+        "trail": 0.20, "profit_keep": 0.20,
+    }]
+
+    strategy = run_backtest(res, cost=0, presets=presets)["strategies"][0]
+
+    assert strategy["total"] == -10.0
 
 
 def _assert_value_error(message, callback):

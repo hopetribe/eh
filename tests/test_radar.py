@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pandas as pd
 
 from gcn.radar import engine
@@ -252,7 +253,9 @@ def _fake_compute(df, **kw):
 
 
 def _synthetic_rows(n=30):
-    idx = pd.bdate_range(end=pd.Timestamp.now().normalize(), periods=n)
+    today = pd.Timestamp.now().normalize().date()
+    last_business_day = pd.Timestamp(np.busday_offset(today, 0, roll="backward"))
+    idx = pd.bdate_range(end=last_business_day, periods=n)
     return [[t.strftime("%Y-%m-%d"), 10, 11, 9, 10 + i * 0.1, 1000]
             for i, t in enumerate(idx)]
 
@@ -264,7 +267,11 @@ def test_scan_symbol_hit():
     assert r["error"] is None
     assert r["code"] == "00700" and r["name"] == "腾讯控股" and r["market"] == "hk"
     assert [s["type"] for s in r["signals"]] == ["绝反"]
-    assert r["signals"][0]["days_ago"] == 2
+    signal_date = pd.Timestamp(r["signals"][0]["date"]).date()
+    today = pd.Timestamp.now().normalize().date()
+    assert r["signals"][0]["days_ago"] == max(
+        2, int(np.busday_count(signal_date, today)),
+    )
     assert r["close"] == 12.9 and r["chg_pct"] == 0.78  # 12.9/12.8-1
 
 

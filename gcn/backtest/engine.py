@@ -196,10 +196,31 @@ def event_study(res: pd.DataFrame, horizons=HORIZONS) -> list:
 
 def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
                   cost: float, max_hold, trail: float | None = None,
-                  hard_stop: float | None = None) -> dict:
+                  hard_stop: float | None = None,
+                  profit_keep: float | None = None,
+                  terminal_policy: str = "liquidate") -> dict:
     """单策略模拟。trail: 跟踪止损比例 (如 0.15 = 从入场后最高收盘回撤 15% 离场),
-    hard_stop: 相对入场开盘价的初始止损比例。两者均在收盘确认，下一根开盘成交，
-    可与信号离场叠加 (先到先出)。"""
+    hard_stop: 相对入场开盘价的初始止损比例。profit_keep: 浮盈达到trail比例后，
+    保留净保本线上方的峰值利润比例。三者均在收盘确认，下一根开盘成交，
+    可与信号离场叠加 (先到先出)。terminal_policy="mark" 时尾部持仓只盯市，
+    不生成强制平仓交易。"""
+    if terminal_policy not in {"liquidate", "mark"}:
+        raise ValueError("terminal_policy 必须是 liquidate 或 mark")
+    if profit_keep is not None:
+        if trail is None:
+            raise ValueError("profit_keep 只能与 trail 一起使用")
+        if (isinstance(trail, (bool, np.bool_))
+                or not isinstance(trail, Real)
+                or not np.isfinite(trail)
+                or not 0 < trail < 1):
+            raise ValueError("启用 profit_keep 时 trail 必须是 (0, 1) 内的有限数")
+        trail = float(trail)
+        if (isinstance(profit_keep, (bool, np.bool_))
+                or not isinstance(profit_keep, Real)
+                or not np.isfinite(profit_keep)
+                or not 0 < profit_keep < 1):
+            raise ValueError("profit_keep 必须是 (0, 1) 内的有限数")
+        profit_keep = float(profit_keep)
     if hard_stop is not None:
         if (isinstance(hard_stop, (bool, np.bool_))
                 or not isinstance(hard_stop, Real)
@@ -223,6 +244,8 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
     pend_sell_reason = None
     entry_i, basis = -1, 1.0
     hi_since_entry = entry_open = np.nan
+    profit_armed = False
+    profit_floor = np.nan
     trades = []
 
     for t in range(n):
@@ -234,6 +257,8 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
                            "exit_reason": pend_sell_reason or "signal"})
             cash, shares = proceeds, 0.0
             entry_open = np.nan
+            profit_armed = False
+            profit_floor = np.nan
         elif shares == 0 and pend_buy and np.isfinite(o[t]):
             basis = cash
             shares = cash * (1 - cost) / o[t]
@@ -241,6 +266,8 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
             entry_i = t
             entry_open = o[t]
             hi_since_entry = c[t]
+            profit_armed = False
+            profit_floor = np.nan
         pend_buy = pend_sell = False
         pend_sell_reason = None
         # 2) 当日收盘评估信号 -> 挂次日开盘单
@@ -249,11 +276,25 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
             hard_stop_hit = (hard_stop is not None
                              and c[t] <= entry_open * (1 - hard_stop))
             trail_hit = trail is not None and c[t] <= hi_since_entry * (1 - trail)
-            if (exitc[t] or hard_stop_hit or trail_hit
+            profit_lock_hit = False
+            if profit_keep is not None:
+                break_even = entry_open / (1 - cost) ** 2
+                trail_floor = hi_since_entry * (1 - trail)
+                profit_floor = break_even + profit_keep * (hi_since_entry - break_even)
+                profit_armed = (profit_armed
+                                or hi_since_entry >= entry_open * (1 + trail))
+                profit_lock_hit = (
+                    profit_armed
+                    and profit_floor > trail_floor
+                    and not trail_hit
+                    and c[t] <= profit_floor
+                )
+            if (exitc[t] or hard_stop_hit or profit_lock_hit or trail_hit
                     or (max_hold is not None and t - entry_i + 1 >= max_hold)):
                 pend_sell = True
                 pend_sell_reason = ("signal" if exitc[t] else
                                     "hard_stop" if hard_stop_hit else
+                                    "profit_lock" if profit_lock_hit else
                                     "trail" if trail_hit else "max_hold")
         elif entry[t]:
             pend_buy = True
@@ -262,14 +303,36 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
         equity[t] = cash + shares * c[t]
 
     # 末端仍持仓时按最后收盘价强制平仓，确保交易、收益与双边费用口径一致。
-    if n and shares > 0:
+    terminal_liquidated = False
+    if n and shares > 0 and terminal_policy == "liquidate":
         proceeds = shares * c[-1] * (1 - cost)
         trades.append({"i": entry_i, "j": n, "ret": float(proceeds / basis - 1),
                        "pnl": float(proceeds - basis), "hold": int(n - entry_i),
                        "exit_reason": "terminal"})
         equity[-1] = proceeds
+        terminal_liquidated = True
 
-    return {"equity": equity, "trades": trades, "held": held}
+    position_open = bool(shares > 0 and not terminal_liquidated)
+    pending_buy_active = bool(not position_open and not terminal_liquidated and pend_buy)
+    if position_open:
+        terminal_status = "pending_exit" if pend_sell else "open"
+    else:
+        terminal_status = "pending_entry" if pending_buy_active else "flat"
+    state = {
+        "status": terminal_status,
+        "position": "open" if position_open else "flat",
+        "entry_i": int(entry_i) if position_open else None,
+        "entry_open": float(entry_open) if position_open else None,
+        "highest_close": float(hi_since_entry) if position_open else None,
+        "pending_buy": pending_buy_active,
+        "pending_sell_reason": (pend_sell_reason
+                                if position_open and pend_sell else None),
+        "profit_armed": bool(position_open and profit_armed),
+        "profit_floor": (float(profit_floor)
+                         if position_open and profit_armed else None),
+        "mark_equity": float(equity[-1]) if n else None,
+    }
+    return {"equity": equity, "trades": trades, "held": held, "state": state}
 
 
 def _perf(equity: np.ndarray, trades: list,
@@ -360,7 +423,8 @@ def run_backtest(res: pd.DataFrame, cost: float = 0.001, max_hold=None,
     curves = {}
     for p in presets:
         bt = _one_strategy(res, p["entry"], p["exit"], cost, max_hold,
-                           trail=p.get("trail"), hard_stop=p.get("hard_stop"))
+                           trail=p.get("trail"), hard_stop=p.get("hard_stop"),
+                           profit_keep=p.get("profit_keep"))
         row = {"name": p["name"], **_perf(bt["equity"], bt["trades"], periods_per_year),
                "exposure": round(_exposure(bt, res), 3)}
         strategies.append(row)

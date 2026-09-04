@@ -1,0 +1,117 @@
+{
+  "schema_version": "gcn-candidate-power-calibration-v1",
+  "artifact_id": "v6-profit-arm20-power-calibration-20260905",
+  "created_on": "2026-09-05",
+  "parent_evidence": {
+    "audit_run_id": "bcede8a46e7dadc596075eb524228810b26fe8258c866723c30478c7c6190a8b",
+    "manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+    "window": "2021-08-27..2026-08-27",
+    "input_directory": "reports/signal-audit-v5-review-20260904/input_snapshot",
+    "input_metadata_trusted": false
+  },
+  "algorithm_hashes": {
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/recipes/gcn_main.py": "94fdf9e6ddcd56047a2d23f9177a174d8a6fc203238db911503b221265a3f77c",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766"
+  },
+  "input_hashes": {
+    "TQQQ": "08f6196049809e94a4a430f2ef35b56785fe16977a10ec593a5cfaec48e64409",
+    "MSFT": "f0f89c50666aeffe9ee84609f946d7ed87f4885ed3a45b2d0c87c7679b801154",
+    "NFLX": "d4596d5b6ced620083c3e461f192faf9d812b251b629d03b7d5f79af169cff80",
+    "YINN": "5f7632f35c4295169747b8a80d1d57bf3fe0ea9c836a694ec35fa924231b11fe",
+    "SNOW": "25a44cf60774fc895b56fc8aae6b1857ddeb79999a14b805e07f96acc7b7a27e",
+    "TSLA": "703bf8a32f58103f60aee4d25303ee1d8d4009212e2048134fdbb32a942e1e5c",
+    "MRNA": "1097f4762b6ca655f663a2146c3c52e2e274240e3ee3e69975be57d6558b519c",
+    "NVDA": "20120beba1b1a2882d9b628be6118b9713792ee1b2c8e6f3007f36fda6d93cc8",
+    "GOOGL": "2f1eec15598b71114f24a9d9141db7328ade5b7abf676165781e2634851e4889",
+    "AAOI": "cb4307da2b2ba28245edaf9cfd9774cd6b2f3828a6f08e7b3119b7179863a848"
+  },
+  "allowed_fields_only": [
+    "armed_cohort_count",
+    "armed_distinct_symbol_count",
+    "profit_lock_exit_count",
+    "profit_lock_distinct_symbol_count"
+  ],
+  "calculation_semantics": {
+    "window": "left_open_right_closed_calendar_months",
+    "entry": "v5_B_confirm5_MA20_plus_ICON_JUEFAN_close_decision_next_OPEN_fill",
+    "exit": "S_SIGNAL_then_incremental_profit_lock_then_original_trail",
+    "rule_cost_bps_per_side": 10,
+    "arm": "first_inclusive_running_CLOSE_peak_at_or_above_1.20_entry_OPEN",
+    "profit_lock": "actual_next_OPEN_fill_only_when_original_S_and_trail_have_no_same_decision_exit",
+    "terminal": "mark_no_forced_exit_pending_not_counted"
+  },
+  "full_window": {
+    "profit-arm20-keep20": {
+      "armed_cohort_count": 46,
+      "armed_distinct_symbol_count": 10,
+      "profit_lock_exit_count": 8,
+      "profit_lock_distinct_symbol_count": 6
+    },
+    "profit-arm20-keep50": {
+      "armed_cohort_count": 49,
+      "armed_distinct_symbol_count": 10,
+      "profit_lock_exit_count": 28,
+      "profit_lock_distinct_symbol_count": 10
+    }
+  },
+  "rolling_36_months": [
+    ["2021-08-31", "2024-08-31", 25, 9, 7, 5, 25, 9, 13, 7],
+    ["2021-09-30", "2024-09-30", 25, 9, 7, 5, 25, 9, 15, 7],
+    ["2021-10-31", "2024-10-31", 24, 9, 7, 5, 24, 9, 15, 7],
+    ["2021-11-30", "2024-11-30", 25, 9, 6, 5, 25, 9, 14, 7],
+    ["2021-12-31", "2024-12-31", 26, 9, 6, 5, 26, 9, 14, 7],
+    ["2022-01-31", "2025-01-31", 27, 9, 6, 5, 28, 9, 15, 7],
+    ["2022-02-28", "2025-02-28", 28, 9, 7, 6, 29, 9, 17, 7],
+    ["2022-03-31", "2025-03-31", 25, 9, 7, 6, 26, 9, 17, 8],
+    ["2022-04-30", "2025-04-30", 26, 9, 5, 5, 27, 9, 15, 7],
+    ["2022-05-31", "2025-05-31", 29, 10, 5, 5, 30, 10, 16, 7],
+    ["2022-06-30", "2025-06-30", 28, 10, 5, 5, 30, 10, 15, 7],
+    ["2022-07-31", "2025-07-31", 28, 10, 3, 3, 30, 10, 14, 6],
+    ["2022-08-31", "2025-08-31", 28, 10, 3, 3, 30, 10, 16, 7],
+    ["2022-09-30", "2025-09-30", 28, 10, 3, 3, 30, 10, 16, 7],
+    ["2022-10-31", "2025-10-31", 29, 10, 3, 3, 31, 10, 16, 7],
+    ["2022-11-30", "2025-11-30", 29, 10, 3, 3, 31, 10, 16, 7],
+    ["2022-12-31", "2025-12-31", 30, 10, 3, 3, 32, 10, 17, 7],
+    ["2023-01-31", "2026-01-31", 28, 10, 3, 3, 31, 10, 18, 7],
+    ["2023-02-28", "2026-02-28", 27, 10, 2, 2, 30, 10, 18, 7],
+    ["2023-03-31", "2026-03-31", 26, 10, 2, 2, 29, 10, 18, 7],
+    ["2023-04-30", "2026-04-30", 29, 10, 2, 2, 32, 10, 17, 7],
+    ["2023-05-31", "2026-05-31", 29, 10, 2, 2, 32, 10, 17, 7],
+    ["2023-06-30", "2026-06-30", 29, 10, 2, 2, 32, 10, 18, 8],
+    ["2023-07-31", "2026-07-31", 30, 10, 2, 2, 33, 10, 18, 8],
+    ["2023-08-27", "2026-08-27", 32, 10, 2, 2, 35, 10, 18, 8]
+  ],
+  "rolling_48_months": [
+    ["2021-08-31", "2025-08-31", 35, 10, 8, 6, 37, 10, 23, 9],
+    ["2021-09-30", "2025-09-30", 35, 10, 8, 6, 37, 10, 23, 9],
+    ["2021-10-31", "2025-10-31", 35, 10, 8, 6, 37, 10, 23, 9],
+    ["2021-11-30", "2025-11-30", 36, 10, 7, 6, 38, 10, 23, 9],
+    ["2021-12-31", "2025-12-31", 37, 10, 7, 6, 39, 10, 24, 9],
+    ["2022-01-31", "2026-01-31", 37, 10, 7, 6, 40, 10, 26, 9],
+    ["2022-02-28", "2026-02-28", 37, 10, 7, 6, 40, 10, 26, 9],
+    ["2022-03-31", "2026-03-31", 33, 10, 7, 6, 36, 10, 24, 9],
+    ["2022-04-30", "2026-04-30", 36, 10, 5, 5, 39, 10, 22, 8],
+    ["2022-05-31", "2026-05-31", 38, 10, 5, 5, 41, 10, 22, 8],
+    ["2022-06-30", "2026-06-30", 37, 10, 5, 5, 40, 10, 22, 9],
+    ["2022-07-31", "2026-07-31", 37, 10, 3, 3, 40, 10, 21, 8],
+    ["2022-08-27", "2026-08-27", 39, 10, 3, 3, 42, 10, 21, 8]
+  ],
+  "rolling_columns": [
+    "start_exclusive",
+    "end_inclusive",
+    "keep20_armed_cohorts",
+    "keep20_armed_symbols",
+    "keep20_profit_lock_exits",
+    "keep20_profit_lock_symbols",
+    "keep50_armed_cohorts",
+    "keep50_armed_symbols",
+    "keep50_profit_lock_exits",
+    "keep50_profit_lock_symbols"
+  ],
+  "selection": {
+    "selected_candidate_id": "profit-arm20-keep50",
+    "excluded_candidate_id": "profit-arm20-keep20",
+    "criterion": "minimum_identifiable_differential_event_density_without_performance_fields"
+  }
+}

@@ -1,0 +1,308 @@
+{
+  "schema_version": "gcn-forward-oos-prereg-v1",
+  "experiment_id": "v6-profit-arm20-keep50-20260905",
+  "immutable": true,
+  "frozen_on": "2026-09-05",
+  "parent_evidence": {
+    "audit_run_id": "bcede8a46e7dadc596075eb524228810b26fe8258c866723c30478c7c6190a8b",
+    "window_end": "2026-08-27",
+    "manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+    "purpose": "non_oos_mechanism_evidence_only"
+  },
+  "candidate_selection_audit": {
+    "stage": "before_spec_freeze",
+    "criterion": "mechanism_identifiability_only",
+    "allowed_historical_fields": [
+      "armed_cohort_count",
+      "armed_distinct_symbol_count",
+      "profit_lock_exit_count",
+      "profit_lock_distinct_symbol_count"
+    ],
+    "forbidden_historical_fields": [
+      "return",
+      "cagr",
+      "sharpe",
+      "mdd",
+      "win_rate",
+      "mae",
+      "mfe"
+    ],
+    "selected_candidate_id": "profit-arm20-keep50",
+    "excluded_candidate_ids": [
+      "profit-arm20-keep20"
+    ],
+    "power_calibration_artifact": "v6-profit-arm20-power-calibration-20260905.json",
+    "power_calibration_hash_method": "canonical_json_sha256",
+    "power_calibration_sha256": "09ec387d8f4bd9574d2a032a59eafec24df182c4bf4afbb822d798531db22928"
+  },
+  "strategies": {
+    "incumbent": {
+      "version": "v5",
+      "strategy_id": "b-confirm5-ma20+jf|exit=S|trail=20%|hold=none",
+      "entry_signal_columns": [
+        "B_SIGNAL",
+        "ICON_JUEFAN"
+      ],
+      "exit_signal_columns": [
+        "S_SIGNAL"
+      ],
+      "trail_bps": 2000,
+      "hard_stop_bps": null,
+      "max_hold_bars": null,
+      "terminal_policy": "mark"
+    },
+    "challenger": {
+      "strategy_id": "profit-arm20-keep50",
+      "inherits": "v5",
+      "trail_bps": 2000,
+      "profit_keep_bps": 5000,
+      "rule_cost_bps_per_side": 10,
+      "arm_peak_gain_bps": 2000,
+      "peak_price": "maximum_CLOSE_from_entry_execution_inclusive",
+      "arm_sticky": true,
+      "breakeven_formula": "entry_open/(1-rule_cost)^2",
+      "profit_floor_formula": "breakeven+profit_keep*(peak_close-breakeven)",
+      "effective_floor_formula": "max(peak_close*(1-trail),profit_floor)",
+      "incremental_trigger": "trail_floor<CLOSE<=profit_floor",
+      "confirmation": "same_session_CLOSE",
+      "execution": "next_symbol_session_OPEN",
+      "exit_reason_priority": [
+        "S_SIGNAL",
+        "hard_stop",
+        "profit_lock",
+        "trail",
+        "max_hold"
+      ],
+      "terminal_policy": "mark"
+    }
+  },
+  "universe": {
+    "core_symbols": [
+      "TQQQ",
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "SNOW",
+      "TSLA",
+      "MRNA",
+      "NVDA",
+      "GOOGL",
+      "AAOI"
+    ],
+    "external_only_symbols": [
+      "TEM"
+    ],
+    "portfolio_weighting": "equal_weight_fixed_core",
+    "common_session_rule": "finite_positive_OHLC_all_core",
+    "missing_policy": "DATA_BLOCKED_no_imputation",
+    "input_adjustment": "provider_adjusted_prices",
+    "accepted_price_basis": "frozen_total_return_scale_from_initial_registration",
+    "historical_revision_policy": "verified_uniform_overlap_scale_rebase_only",
+    "revision_tolerance_ppm": 1,
+    "price_rebase_formula": "median(accepted_OHLC/incoming_OHLC)_then_require_all_ratios_within_tolerance_and_apply_to_new_rows",
+    "volume_rebase_formula": "median(accepted_volume/incoming_volume)_over_positive_pairs_with_paired_zeros_required_then_apply_to_new_rows",
+    "nonuniform_revision_policy": "DATA_BLOCKED",
+    "initial_state": "flat_cash_1_per_symbol_no_pending_orders",
+    "carry_in_positions": false,
+    "carry_in_pending_orders": false
+  },
+  "boundaries": {
+    "signal_cutoff_exclusive": "2026-09-05",
+    "initial_embargo_common_sessions": 5,
+    "embargo_order_policy": "discard_all_decisions_and_pending_orders",
+    "accrual_start_rule": "sixth_common_session_after_cutoff",
+    "expected_accrual_start": "2026-09-15",
+    "actual_accrual_start_must_equal_expected": true,
+    "first_eligible_decision": "actual_accrual_start_CLOSE",
+    "pre_accrual_setup_policy": "discard_pre_accrual_B_SETUP_confirmation_state",
+    "minimum_accrual_months": 36,
+    "expected_minimum_accrual_end": "2029-09-14",
+    "maximum_accrual_months": 48,
+    "expected_maximum_accrual_end": "2030-09-13",
+    "endpoint_rule": "last_core_common_session_on_or_before_expected_endpoint",
+    "accrual_end_selection": "lock_36_if_counts_pass_else_lock_48_if_counts_pass_else_inconclusive",
+    "intermediate_counts_can_lock_end": false,
+    "outcome_embargo_common_sessions": 60,
+    "post_accrual_price_usage": "forward_20_60_labels_only"
+  },
+  "maturity": {
+    "common": {
+      "incumbent_reference_entries_min": 45,
+      "challenger_armed_cohorts_min": 24,
+      "challenger_armed_symbols_min": 9,
+      "incumbent_active_symbols_min": 9,
+      "incumbent_negative_20_session_blocks_min": 6,
+      "forward_horizons_sessions": [
+        20,
+        60
+      ]
+    },
+    "at_36_months": {
+      "affected_exits_min": 15,
+      "affected_symbols_min": 7
+    },
+    "at_48_months": {
+      "affected_exits_min": 20,
+      "affected_symbols_min": 8
+    },
+    "definitions": {
+      "reference_entry": "v5 decision plus next symbol-session OPEN fill inside accrual, independent of challenger re-entry availability",
+      "armed_cohort": "executed challenger entry whose inclusive running CLOSE peak first reaches entry_open*(1+arm_peak_gain); count once per position, including terminal-open positions",
+      "affected_exit": "challenger profit_lock exit executed no later than locked accrual end while incumbent has no same-session exit order; count once per challenger position",
+      "negative_block": "incumbent equal-weight portfolio nonoverlapping 20-common-session return below zero",
+      "active_symbol": "core symbol with at least one incumbent reference entry",
+      "label_completion": "fixed affected-event population has complete 20-session and 60-session labels and 60 post-lock core-common sessions have elapsed"
+    },
+    "labels": {
+      "event_population": "executed_differential_profit_lock_exits_fixed_at_locked_accrual_end",
+      "event_id_anchor": "trigger_decision_date_plus_cohort_id",
+      "price_anchor": "actual_profit_lock_exit_fill_OPEN",
+      "fill_session_ordinal": 1,
+      "horizon_end_position_formula": "fill_pos+h-1",
+      "return_formula": "CLOSE_at_horizon/fill_open-1",
+      "mfe_formula": "max_HIGH_fill_through_horizon_inclusive/fill_open-1",
+      "mae_formula": "min_LOW_fill_through_horizon_inclusive/fill_open-1",
+      "partial_label_policy": "all_horizon_fields_null_and_event_pending",
+      "pending_count_formula": "fixed_affected_events_without_complete_horizon",
+      "post_lock_policy": "labels_only_no_new_cohorts_orders_or_performance",
+      "promotion_use": false,
+      "ready_policy": "post_lock_core_common_sessions_at_least_60_and_pending_20_60_both_zero"
+    }
+  },
+  "evaluation": {
+    "annual_sessions": 252,
+    "base_cost_bps_per_side": 10,
+    "stress_cost_bps_per_side": 25,
+    "stress_reuses_base_orders": true,
+    "risk_free_rate_bps": 0,
+    "portfolio_return": "daily_equal_weight_fixed_core_mark_to_market",
+    "metric_deltas": "challenger_minus_incumbent_except_downside_improvement_is_incumbent_minus_challenger",
+    "metric_formulas": {
+      "symbol_daily_return_first": "equity_close_0/1-1",
+      "symbol_daily_return_later": "equity_close_t/equity_close_t_minus_1-1",
+      "portfolio_daily_return": "arithmetic_mean_of_10_symbol_daily_returns_no_skipna",
+      "cagr": "exp(252/N*sum(log1p(portfolio_daily_return)))-1",
+      "sharpe": "sqrt(252)*mean(portfolio_daily_return)/std_ddof1_with_risk_free_zero",
+      "mdd": "max(1-equity/running_max_equity)_including_initial_equity_1",
+      "exposure": "held_at_close_symbol_days/(N*10)",
+      "entry_count_ratio": "challenger_executed_entry_fills/incumbent_reference_entry_fills",
+      "cross_symbol_total_return": "final_mark_equity-1",
+      "positive_contribution": "max_positive_symbol_delta/sum_positive_symbol_deltas",
+      "invalid_or_zero_denominator": "gate_failure_except_zero_incumbent_downside_is_not_mature"
+    },
+    "downside": {
+      "block_sessions": 20,
+      "partition": "nonoverlapping_anchored_at_accrual_start",
+      "terminal_incomplete_block": "exclude",
+      "block_return_formula": "product(1+portfolio_daily_return)-1",
+      "loss_formula": "max(-block_return,0)",
+      "bootstrap_statistic": "mean(incumbent_block_loss-challenger_block_loss)",
+      "ratio_formula": "mean(challenger_block_loss)/mean(incumbent_block_loss)",
+      "zero_incumbent_downside": "not_mature"
+    },
+    "bootstrap": {
+      "method": "paired_two_axis_moving_block",
+      "replications": 20000,
+      "bit_generator": "PCG64",
+      "seed": 20260905,
+      "time_block_sessions": 20,
+      "time_block_scheme": "ordinary_non_circular_moving_block",
+      "time_start_indices": "uniform_integers_0_through_N_minus_20_with_replacement",
+      "blocks_per_replication": "ceil(N/20)",
+      "assembly": "same_time_blocks_for_both_strategies_and_all_symbols_concatenate_then_truncate_N",
+      "symbol_resample_count": 10,
+      "symbol_sampling": "10_indices_with_replacement_once_per_replication_from_frozen_core_order",
+      "duplicate_symbol_weighting": "each_sampled_index_has_equal_weight_including_duplicates",
+      "point_estimate": "unsampled_original_series",
+      "confidence_side": "one_sided_lower",
+      "alpha_bps": 500,
+      "quantile_method": "linear",
+      "studentized": false,
+      "multiplicity": "none_single_candidate",
+      "gate_comparison": "strict_for_gt_fields_inclusive_for_min_max_fields"
+    },
+    "stress_policy": {
+      "order_source": "reuse_exact_base_rule_orders_and_fills",
+      "rule_cost_for_trigger_bps_per_side": 10,
+      "revalue_cost_bps_per_side": 25,
+      "path_recalculation": false,
+      "terminal_open_position": "mark_without_exit_cost"
+    },
+    "robustness": {
+      "leave_one_out": "drop_one_core_symbol_then_equal_weight_remaining_9_without_rebootstrap_or_rematurity",
+      "cross_symbol_positive": "strict_total_return_delta_above_zero",
+      "contribution_denominator": "sum_of_positive_symbol_total_return_deltas",
+      "empty_or_nonfinite": "gate_failure"
+    },
+    "gates": {
+      "base": {
+        "annualized_log_return_delta_q05_gt_bps": -500,
+        "point_cagr_delta_min_bps": -300,
+        "downside_improvement_q05_gt_bps": 0,
+        "downside_loss_ratio_max_bps": 9000,
+        "mdd_delta_max_bps": 0,
+        "sharpe_delta_min_milli": -100,
+        "entry_count_ratio_min_bps": 7500,
+        "exposure_ratio_min_bps": 7500
+      },
+      "stress": {
+        "annualized_log_return_delta_min_bps": -500,
+        "mdd_delta_max_bps": 0,
+        "sharpe_delta_min_milli": -100
+      },
+      "cross_symbol": {
+        "median_total_return_delta_gt_bps": 0,
+        "positive_symbols_min": 6,
+        "positive_contribution_max_bps": 3500
+      },
+      "leave_one_out": {
+        "required_passes": 9,
+        "annualized_log_return_delta_min_bps": -500,
+        "mdd_delta_max_bps": 0,
+        "sharpe_delta_min_milli": -100
+      }
+    }
+  },
+  "decision": {
+    "pre_ready_visible_fields": [
+      "spec_hash",
+      "source_hashes",
+      "accepted_bar_hashes",
+      "integrity_status",
+      "state",
+      "elapsed_common_sessions",
+      "incumbent_reference_entries",
+      "challenger_armed_cohorts",
+      "challenger_armed_symbols",
+      "incumbent_active_symbols",
+      "incumbent_negative_20_session_blocks",
+      "affected_exits",
+      "affected_symbols",
+      "pending_20_session_labels",
+      "pending_60_session_labels"
+    ],
+    "pre_ready_forbidden_metrics": [
+      "return",
+      "cagr",
+      "sharpe",
+      "mdd",
+      "p_value"
+    ],
+    "formal_evaluations_allowed": 1,
+    "promotion_result": "eligible_for_v6_implementation_not_automatic_deployment",
+    "ready_failure": "REJECTED_KEEP_V5",
+    "maximum_count_failure": "INCONCLUSIVE_COVERAGE_KEEP_V5",
+    "semantic_change": "NEW_SPEC_HASH_AND_NEW_OOS_CLOCK",
+    "states": [
+      "INITIAL_EMBARGO",
+      "ACCRUING_36M",
+      "ACCRUING_TO_48M",
+      "OUTCOME_EMBARGO_60",
+      "READY_ONCE",
+      "ELIGIBLE_FOR_V6_IMPLEMENTATION",
+      "REJECTED_KEEP_V5",
+      "INCONCLUSIVE_COVERAGE_KEEP_V5",
+      "DATA_BLOCKED"
+    ]
+  }
+}
