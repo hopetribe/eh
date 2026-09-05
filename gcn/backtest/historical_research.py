@@ -80,6 +80,8 @@ def candidate_signals(frame: pd.DataFrame) -> dict[str, pd.DataFrame]:
 
 def evaluate_rule(prepared: dict, rule: str, start: pd.Timestamp, end: pd.Timestamp,
                   cost: float = 0.001, *, entry_hard_stop_col: str | None = None,
+                  entry_max_hold_col: str | None = None,
+                  entry_exit_cols: tuple[str, str] | None = None,
                   include_positions: bool = False) -> dict:
     """统一0.1%规则费用产生订单，成本压力只对同一订单路径重新计费。"""
     daily, trades, exposure = {}, [], []
@@ -92,10 +94,17 @@ def evaluate_rule(prepared: dict, rule: str, start: pd.Timestamp, end: pd.Timest
             frame[col] = bundle["rules"][rule][col].reindex(frame.index)
         if entry_hard_stop_col is not None:
             frame[entry_hard_stop_col] = bundle["rules"][rule][entry_hard_stop_col].reindex(frame.index)
+        if entry_max_hold_col is not None:
+            frame[entry_max_hold_col] = bundle["rules"][rule][entry_max_hold_col].reindex(frame.index)
+        if entry_exit_cols is not None:
+            for col in entry_exit_cols:
+                frame[col] = bundle["rules"][rule][col].reindex(frame.index)
         keep = 0.5 if rule in {"profit50", "bs-cooldown-profit50"} else None
         result = _one_strategy(frame, ["B_SIGNAL", "ICON_JUEFAN"], ["S_SIGNAL"],
                                0.001, None, trail=0.20, profit_keep=keep,
-                               entry_hard_stop_col=entry_hard_stop_col)
+                               entry_hard_stop_col=entry_hard_stop_col,
+                               entry_max_hold_col=entry_max_hold_col,
+                               entry_exit_cols=entry_exit_cols)
         counts = np.zeros(len(frame), dtype=int)
         ratio = (1 - cost) / 0.999
         for trade in result["trades"]:

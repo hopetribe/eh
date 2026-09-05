@@ -250,6 +250,50 @@ def test_entry_specific_stop_rejects_invalid_fractions_instead_of_disabling_risk
             raise AssertionError(f"非法入场风险比例未拒绝: {invalid!r}")
 
 
+def test_entry_specific_holding_limit_is_locked_and_counts_entry_day():
+    res = _trade_frame(10)
+    res["OPEN"] = res["CLOSE"] = 100.
+    res.loc[res.index[[0, 3]], "ENTRY"] = True
+    res["LIMIT"] = [2., 5., 1., np.nan, 1., 1., 1., 1., 1., 1.]
+    result = _one_strategy(res, ["ENTRY"], ["EXIT"], 0, None, entry_max_hold_col="LIMIT")
+    assert [(t["i"], t["j"], t["exit_reason"]) for t in result["trades"]] == [
+        (1, 3, "max_hold"), (4, 10, "terminal")]
+    fallback = _one_strategy(res, ["ENTRY"], ["EXIT"], 0, 4, entry_max_hold_col="LIMIT")
+    assert fallback["trades"][1]["j"] == 8 and fallback["trades"][1]["hold"] == 4
+
+
+def test_entry_holding_limit_rejects_fractional_nonpositive_and_nonfinite_values():
+    res = _trade_frame(3)
+    for invalid in (1.5, 0, -1, np.inf, True, "20"):
+        res["LIMIT"] = pd.Series([invalid, np.nan, np.nan], index=res.index, dtype=object)
+        _assert_value_error("entry_max_hold_col", lambda: _one_strategy(
+            res, ["ENTRY"], ["EXIT"], 0, None, entry_max_hold_col="LIMIT"))
+
+
+def test_entry_conditional_exit_is_bound_to_entry_source_and_respects_original_s():
+    res = _trade_frame(8)
+    res["OPEN"] = res["CLOSE"] = 100.
+    res.loc[res.index[[0, 3]], "ENTRY"] = True
+    res["USE_EXTRA"] = [True, False, False, False, True, True, True, True]
+    res["EXTRA_EXIT"] = [False, False, True, False, False, True, True, True]
+    result = _one_strategy(res, ["ENTRY"], ["EXIT"], 0, None,
+                           entry_exit_cols=("USE_EXTRA", "EXTRA_EXIT"))
+    assert [(t["i"], t["j"], t["exit_reason"]) for t in result["trades"]] == [
+        (1, 3, "entry_signal"), (4, 8, "terminal")]
+    res.loc[res.index[2], "EXIT"] = True
+    priority = _one_strategy(res, ["ENTRY"], ["EXIT"], 0, None,
+                             entry_exit_cols=("USE_EXTRA", "EXTRA_EXIT"))
+    assert priority["trades"][0]["exit_reason"] == "signal"
+
+
+def test_conditional_exit_requires_an_explicit_existing_column_pair():
+    res = _trade_frame(3)
+    res["A"] = res["B"] = True
+    for invalid in ("AB", ("A",), ("A", "B", "EXIT"), ("A", "missing")):
+        _assert_value_error("entry_exit_cols", lambda: _one_strategy(
+            res, ["ENTRY"], ["EXIT"], 0, None, entry_exit_cols=invalid))
+
+
 def test_profit_lock_arms_at_trail_gain_and_exits_at_next_open():
     res = _trade_frame(5)
     res["OPEN"] = [10.0, 100.0, 110.0, 90.0, 90.0]

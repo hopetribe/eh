@@ -199,13 +199,17 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
                   hard_stop: float | None = None,
                   profit_keep: float | None = None,
                   terminal_policy: str = "liquidate",
-                  entry_hard_stop_col: str | None = None) -> dict:
+                  entry_hard_stop_col: str | None = None,
+                  entry_max_hold_col: str | None = None,
+                  entry_exit_cols: tuple[str, str] | None = None) -> dict:
     """单策略模拟。trail: 跟踪止损比例 (如 0.15 = 从入场后最高收盘回撤 15% 离场),
     hard_stop: 相对入场开盘价的初始止损比例。profit_keep: 浮盈达到trail比例后，
     保留净保本线上方的峰值利润比例。三者均在收盘确认，下一根开盘成交，
     可与信号离场叠加 (先到先出)。terminal_policy="mark" 时尾部持仓只盯市，
     不生成强制平仓交易。entry_hard_stop_col为信号日的可选风险比例列；
-    非空值覆盖该笔入场hard_stop，NaN沿用全局值，持仓后锁定不再改变。"""
+    非空值覆盖该笔入场hard_stop，NaN沿用全局值，持仓后锁定不再改变。
+    entry_max_hold_col同样以信号日取值覆盖该笔max_hold，买入当天计第1根。
+    entry_exit_cols=(入场启用列, 额外退出列)，启用标记亦锁定在信号日。"""
     if terminal_policy not in {"liquidate", "mark"}:
         raise ValueError("terminal_policy 必须是 liquidate 或 mark")
     if profit_keep is not None:
@@ -239,6 +243,15 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
                     or not np.isfinite(value) or not 0 < value < 1):
                 raise ValueError("entry_hard_stop_col值必须是NaN或(0, 1)内的有限数")
             entry_stops[pos] = float(value)
+    entry_holds = np.full(len(res), np.nan)
+    if entry_max_hold_col is not None:
+        for pos, value in enumerate(res[entry_max_hold_col]):
+            if pd.isna(value):
+                continue
+            if (isinstance(value, (bool, np.bool_)) or not isinstance(value, Real)
+                    or not np.isfinite(value) or value < 1 or int(value) != value):
+                raise ValueError("entry_max_hold_col值必须是NaN或正整数")
+            entry_holds[pos] = int(value)
     o = res["OPEN"].to_numpy(dtype=float)
     c = res["CLOSE"].to_numpy(dtype=float)
     if (not np.isfinite(o).all() or not np.isfinite(c).all()
@@ -247,6 +260,16 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
     entry = res[list(entry_cols)].fillna(False).astype(bool).any(axis=1).to_numpy()
     exitc = res[list(exit_cols)].fillna(False).astype(bool).any(axis=1).to_numpy()
     n = len(res)
+    entry_extra_enabled = np.zeros(n, dtype=bool)
+    extra_exit = np.zeros(n, dtype=bool)
+    if entry_exit_cols is not None:
+        if (not isinstance(entry_exit_cols, tuple) or len(entry_exit_cols) != 2
+                or any(not isinstance(col, str) or col not in res.columns
+                       for col in entry_exit_cols)):
+            raise ValueError("entry_exit_cols必须是两个已存在列名组成的tuple")
+        enabled_col, exit_col = entry_exit_cols
+        entry_extra_enabled = res[enabled_col].fillna(False).astype(bool).to_numpy()
+        extra_exit = res[exit_col].fillna(False).astype(bool).to_numpy()
 
     cash, shares = 1.0, 0.0
     equity = np.full(n, np.nan)
@@ -256,6 +279,8 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
     entry_i, basis = -1, 1.0
     hi_since_entry = entry_open = np.nan
     active_hard_stop = hard_stop
+    active_max_hold = max_hold
+    active_extra_exit = False
     profit_armed = False
     profit_floor = np.nan
     trades = []
@@ -279,6 +304,9 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
             entry_open = o[t]
             active_hard_stop = (float(entry_stops[t - 1])
                                 if np.isfinite(entry_stops[t - 1]) else hard_stop)
+            active_max_hold = (int(entry_holds[t - 1])
+                               if np.isfinite(entry_holds[t - 1]) else max_hold)
+            active_extra_exit = bool(entry_extra_enabled[t - 1])
             hi_since_entry = c[t]
             profit_armed = False
             profit_floor = np.nan
@@ -289,6 +317,7 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
             hi_since_entry = max(hi_since_entry, c[t])
             hard_stop_hit = (active_hard_stop is not None
                              and c[t] <= entry_open * (1 - active_hard_stop))
+            entry_exit_hit = active_extra_exit and extra_exit[t]
             trail_hit = trail is not None and c[t] <= hi_since_entry * (1 - trail)
             profit_lock_hit = False
             if profit_keep is not None:
@@ -303,11 +332,12 @@ def _one_strategy(res: pd.DataFrame, entry_cols, exit_cols,
                     and not trail_hit
                     and c[t] <= profit_floor
                 )
-            if (exitc[t] or hard_stop_hit or profit_lock_hit or trail_hit
-                    or (max_hold is not None and t - entry_i + 1 >= max_hold)):
+            if (exitc[t] or hard_stop_hit or entry_exit_hit or profit_lock_hit or trail_hit
+                    or (active_max_hold is not None and t - entry_i + 1 >= active_max_hold)):
                 pend_sell = True
                 pend_sell_reason = ("signal" if exitc[t] else
                                     "hard_stop" if hard_stop_hit else
+                                    "entry_signal" if entry_exit_hit else
                                     "profit_lock" if profit_lock_hit else
                                     "trail" if trail_hit else "max_hold")
         elif entry[t]:
