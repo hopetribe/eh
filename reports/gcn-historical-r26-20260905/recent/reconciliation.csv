@@ -1,0 +1,11 @@
+symbol,close_rows,flat_closes,held_closes,events,actual_entries,actual_open_exits,terminal_exits,pending_at_cutoff,reconciled
+TQQQ,251,209,42,4,1,1,0,False,True
+MSFT,251,170,81,6,2,1,1,False,True
+NFLX,251,187,64,9,2,1,1,False,True
+YINN,251,210,41,6,1,1,0,False,True
+SNOW,251,108,143,15,3,2,1,False,True
+TSLA,251,172,79,3,1,1,0,False,True
+MRNA,251,194,57,13,1,1,0,False,True
+NVDA,251,208,43,3,1,1,0,False,True
+GOOGL,251,178,73,4,2,1,1,False,True
+AAOI,251,188,63,10,3,3,0,False,True

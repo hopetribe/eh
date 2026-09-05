@@ -1,0 +1,29 @@
+{
+  "research_version": "gcn-historical-r26",
+  "stage": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "window": [
+    "validation",
+    "2024-08-27",
+    "2025-08-26"
+  ],
+  "core": [
+    "TQQQ",
+    "MSFT",
+    "NFLX",
+    "YINN",
+    "SNOW",
+    "TSLA",
+    "MRNA",
+    "NVDA",
+    "GOOGL",
+    "AAOI"
+  ],
+  "input": "frozen original r22 v5 orders; no order simulation or new candidate returns",
+  "state": "full-history signals; initial/actual OPEN exits are flat; terminal CLOSE remains held",
+  "event_clocks": "raw B, confirmed B, raw JF and tradable JF have separate signal-date denominators",
+  "labels": "next OPEN reference to 20th CLOSE, gross and posthoc, complete within window only",
+  "overlap": "raw suppression may coincide with an old Setup confirmation; B wins B/JF entry collisions",
+  "stopping": "diagnostics are not a promoted strategy; no cooldown search or later r24 evaluation"
+}

@@ -1,0 +1,11 @@
+window,symbol,trades,path_rows,reconciled,chain_reconciled,b_signals,jf_signals,entry_signals,s_signals,b_trades,jf_trades,signal_exits
+full,TQQQ,10,250,True,True,5,6,11,9,4,6,4
+full,MSFT,4,661,True,True,5,1,6,1,3,1,1
+full,NFLX,6,675,True,True,8,2,10,5,4,2,4
+full,YINN,15,450,True,True,9,9,18,9,7,8,6
+full,SNOW,11,421,True,True,10,6,16,8,5,6,4
+full,TSLA,7,264,True,True,6,2,8,8,5,2,4
+full,MRNA,8,356,True,True,6,8,14,5,2,6,1
+full,NVDA,3,309,True,True,2,2,4,7,2,1,1
+full,GOOGL,5,376,True,True,5,0,5,2,5,0,1
+full,AAOI,13,325,True,True,6,8,14,9,5,8,5
