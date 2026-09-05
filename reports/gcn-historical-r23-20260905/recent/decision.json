@@ -1,0 +1,31 @@
+{
+  "research_version": "gcn-historical-r23",
+  "stage": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "core": [
+    "TQQQ",
+    "MSFT",
+    "NFLX",
+    "YINN",
+    "SNOW",
+    "TSLA",
+    "MRNA",
+    "NVDA",
+    "GOOGL",
+    "AAOI"
+  ],
+  "window": [
+    "recent",
+    "2025-08-27",
+    "2026-08-26"
+  ],
+  "input": "frozen r22 original v5 trades and paths; no new simulator or signal calculation",
+  "observations": "held CLOSE only; original OPEN exit adds no intraday observation",
+  "boundary": "strict factor < 1 pressure; recovery >= 1; prior > 1 then <= 1 return; later > 1 return recovery",
+  "net_positive": "ever positive through current CLOSE, including 0.1% cost on each side; not factor 1",
+  "precision": "r22 IEEE float factors, round_trip CSV parsing, no epsilon or fitted duration threshold",
+  "censoring": "no recovery before original exit is right-censored, not evidence of no later recovery",
+  "posthoc": "trade outcomes, recovery and strictly later held peaks are descriptive, not causal filters",
+  "window_policy": "independent flat start, terminal liquidation; overlapping windows are not independent"
+}
