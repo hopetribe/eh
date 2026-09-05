@@ -2,6 +2,54 @@ import numpy as np
 import pandas as pd
 
 
+def test_r4_selector_excludes_controls_and_preserves_frozen_gate_and_tie_order():
+    from gcn.backtest.signal_research_r4 import choose_training
+
+    base = {"rule": "v5", "trades": 50, "entry_events": 54, "entry_win": 50.,
+            "entry_interference": 48., "cagr": 8.72, "mdd": 15., "calmar": .58,
+            "buy_covered": 11}
+    control = {**base, "rule": "P-stop5", "calmar": 10.}
+    failed = {**base, "rule": "P-stop5-hold10", "mdd": 18., "calmar": 2.}
+    first = {**base, "rule": "P-stop5-hold20", "calmar": .7}
+    second = {**base, "rule": "P-stop5-mid2", "calmar": .7}
+    assert choose_training([base, control, failed]) is None
+    assert choose_training([base, control, failed, second, first]) == "P-stop5-hold20"
+    assert choose_training([base, {**first, "buy_covered": 10}]) is None
+
+
+def test_r4_frozen_training_records_actual_exit_scope_and_no_validation(tmp_path):
+    import hashlib
+    import json
+    from pathlib import Path
+    from gcn.backtest.signal_research_r4 import run_training, CHALLENGERS
+
+    root = Path(__file__).resolve().parents[1]
+    decision = run_training(root / "reports/signal-audit-v5-review-20260904", tmp_path)
+    assert decision["selected"] is None
+    assert decision["validation_status"] == "not_run_no_eligible_candidate"
+    assert all("mdd" in decision["failures"][r] for r in CHALLENGERS)
+    trades = pd.read_csv(tmp_path / "trades.csv")
+    scoped = trades[trades.exit_reason.isin(["max_hold", "entry_signal"])]
+    assert len(scoped) > 0 and scoped.entry_origin.eq("additional").all()
+    timed = scoped[scoped.exit_reason.eq("max_hold")]
+    assert len(timed) > 0 and timed.hold_days.eq(timed.entry_limit).all()
+    assert trades.query("entry_origin=='v5'").entry_limit.isna().all()
+    assert not trades.query("entry_origin=='v5'").use_extra_exit.any()
+    events = pd.read_csv(tmp_path / "events.csv")
+    assert events.outcome_date.max() <= "2024-08-26"
+    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    for filename, digest in manifest["outputs"].items():
+        assert hashlib.sha256((tmp_path / filename).read_bytes()).hexdigest() == digest
+    for filename, digest in manifest["algorithm_sources"].items():
+        assert hashlib.sha256((tmp_path / "source_snapshot" / filename).read_bytes()).hexdigest() == digest
+    try:
+        run_training(root / "reports/signal-audit-v5-review-20260904", tmp_path)
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError("must not overwrite the frozen training run")
+
+
 def test_research_evaluator_passes_entry_duration_and_conditional_exit():
     from gcn.backtest.historical_research import evaluate_rule
 
