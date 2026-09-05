@@ -1,0 +1,46 @@
+{
+  "research_version": "gcn-historical-r11",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "protocol_sha256": "b9123a6ded7ac8b6eb091dd20441f019ff2341493180c3c71ecef9a074b65572",
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r4.py": "dce126286ac66b1ceee3703b6cb0cb84395a0361557dc5e0ccd984aa6ad3594e",
+    "gcn/backtest/signal_research_r3.py": "68a856940485cae65ea4f56712fbc72a6098b24d997ffbbb0e84e71644283342",
+    "gcn/backtest/signal_research_r2.py": "8cb1dd0e4c1ec10f7b047aef2339994e22909238a1809f13960ed5234cca6a8e",
+    "gcn/backtest/historical_research.py": "d12a300c2aebd87b2f0b7e5b03f4af8e8cc5bac21da1916004601b61103afa16",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "9dd123ccd64549453f42a3d6e010da7d51e8fc4c82d9a2dab464dbe0e946f9ec",
+    "gcn/recipes/gcn_main.py": "b2f1992f649cc1a5837827beb66ae87ff4b93ea54bec8c995b49d8954018173d",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/backtest/signal_research_r5.py": "1899aae19be0597101b805be889645d74e6a5e214e2bcb772ef5de255de20ca3",
+    "gcn/backtest/signal_research_r6.py": "a0c2bab3ba4be79c72a750e42609d24f5a82f699953b901cd85080662e653dab",
+    "gcn/backtest/signal_research_r7.py": "2f68c5d868ed566e0eb4968fd668314f3eaf0adaec2201b4c0097a65bf8e9185",
+    "gcn/backtest/signal_research_r11.py": "d20e981334ea709a0f379abddfedb6200042d64ee9a2005349753a7bd170c35b"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "decision.json": "f0cf403a0b8e49317094c7ee1b06a2a1212e0c1896669d5e609172e6bb641abd",
+    "events.csv": "ced0aa74f9198d2bbcd6577f7cae689e58ae6a1c34fb1145b7dcba0baee0de3e",
+    "missed_turns.csv": "beff3b2b0395a731fb5f1bc4b7068a7cb6fc49e9fc45ad14121e69ee3e3a1466",
+    "protocol.md": "b9123a6ded7ac8b6eb091dd20441f019ff2341493180c3c71ecef9a074b65572",
+    "trades.csv": "93147ad1345fbeb8c0a453d452d430fa9e7133bb944a0cf2ad2cd73da84a24ed",
+    "training.csv": "09c8e8ec8d0e8dcaab70f20da5bde71505a4ba8b30cc4134f547ac88c18cf02c"
+  }
+}
