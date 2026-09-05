@@ -1,0 +1,34 @@
+{
+  "research_version": "gcn-historical-r1",
+  "selected": "s-cooldown40",
+  "validation_failures": [
+    "no_material_improvement"
+  ],
+  "recommended": "v5",
+  "evidence": "retrospective_only",
+  "production_changed": false,
+  "training_rejections": {
+    "b-cooldown20": [
+      "entry_win",
+      "entry_interference"
+    ],
+    "s-cooldown40": [],
+    "jf-cooldown10": [
+      "entry_win",
+      "entry_interference"
+    ],
+    "bs-cooldown": [
+      "entry_win",
+      "entry_interference"
+    ],
+    "b-momentum": [],
+    "profit50": [
+      "cagr"
+    ],
+    "bs-cooldown-profit50": [
+      "entry_win",
+      "entry_interference",
+      "cagr"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "research_version": "gcn-historical-r1",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "algorithm_sources": {
+    "gcn/backtest/historical_research.py": "0ac774c06ef89b2e763ed54495b5ae1fd4a5ec4ee42e3b1fb0f2cc0c8fcf78c5",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "0791e37da3eda92a6d940373bef3c7ff04826878c62a2caff92d5de6067f6ace",
+    "gcn/recipes/gcn_main.py": "b2f1992f649cc1a5837827beb66ae87ff4b93ea54bec8c995b49d8954018173d",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "comparisons.csv": "fdd0a98969c4309f1328dcd4fbdf9b1ab920ec508318a1cc0999e5b662394bb3",
+    "decision.json": "e57dc8e1782f37a4e6263ed671aa73cdc7da538f61f5e8a1df27fd041c5095ea",
+    "events.csv": "4cf94ed75700bfc7ae548a5b0bb05fe9eb96b5fbaee13f99326216965fd10654",
+    "missed_turns.csv": "b09456479f8e4f7c64e1170f7cd01690f62762d80afc1fab0ef30b78bbb51b24",
+    "trades.csv": "a5614fd00484ab4f68972216543f49fc840771231f37555d42d50bf70b1fe8d6"
+  }
+}
