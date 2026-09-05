@@ -1,0 +1,47 @@
+{
+  "research_version": "gcn-historical-r21",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "protocol_sha256": "c1369ca917b768f349f29494f1b767dea51abc81c09f969283a360b2c47e306f",
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r4.py": "5c29404453badce4e75e5217195ede92196efb7228fdd44954289b835274f32a",
+    "gcn/backtest/signal_research_r3.py": "68a856940485cae65ea4f56712fbc72a6098b24d997ffbbb0e84e71644283342",
+    "gcn/backtest/signal_research_r2.py": "8cb1dd0e4c1ec10f7b047aef2339994e22909238a1809f13960ed5234cca6a8e",
+    "gcn/backtest/historical_research.py": "344dec1fac047753f86e5910cfccb13eeb2f9a3afe9baa52f1323c9d7bf4e2b9",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "e8cfb423fe6b5762d591f9269121cc64f80017cf7507c2c77e6b34fe715a4ab0",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/backtest/signal_research_r17.py": "d57c90d588cd4894b0c9f1eaba096fdd4ab21c229f6ef506a47b542f3b206e26",
+    "gcn/backtest/signal_research_r21.py": "26bbaf4ac7d0854ccbb3b41e7cc10225437accd3d764b6093e0f9ddf5d619012"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "decision.json": "488955e4bdb3ea3d6665f718173c189bbc9d425193b250c9db374819e3567795",
+    "events.csv": "73b0c60cf18c80fb6db169ed840d421975df35dbbcd152d586df4a2c590f7c64",
+    "missed_turns.csv": "c4ba071b063115c68b826c3ef29c6ae019bb93036bb79b850472a4e0788ebc14",
+    "protocol.md": "c1369ca917b768f349f29494f1b767dea51abc81c09f969283a360b2c47e306f",
+    "trades.csv": "771f773f9a268cdffcbecfd72757a14c8738ebd7e231b1176463e73e6fd9296a",
+    "training.csv": "f095c3216930e5e3cb4d44b396fea348ab11b62606e25121c7df6f0aff8e6027"
+  },
+  "entry_breakeven_base_col": "ENTRY_BE_BASE",
+  "breakeven_arm_r": 1.0,
+  "breakeven_reference_cost": 0.001
+}
