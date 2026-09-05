@@ -1,0 +1,19 @@
+{
+  "research_version": "gcn-historical-r10",
+  "status": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "r9_status": "rejected_keep_v5",
+  "r9_failures_unchanged": [
+    "full5y_cagr",
+    "without_AAOI_cagr",
+    "cost025_cagr",
+    "leave_one_out_cagr"
+  ],
+  "reset_matches_r9": true,
+  "continuous_compounding_errors": {
+    "v5": -3.1086244689504383e-15,
+    "P-confirm5-v5profit50": -3.552713678800501e-15
+  },
+  "evidence": "retrospective_only"
+}
