@@ -231,3 +231,5 @@
 - 当前真实preflight仍因`MSFT/NFLX/YINN/MRNA/GOOGL`的sidecar与CSV摘要不一致而返回`DATA_BLOCKED/3`，且未创建任何真实shadow状态；只能通过原行情提供方的正常加锁刷新修复，不能人工改摘要。
 - 本阶段部署只同步运维代码，不改变`VERSIONS`、v5 preset、API或Web UI，也不会执行`initialize/update`；因此正式策略仍是v5，真实OOS绩效仍为零样本。
 - 混合生命周期竞争存在实际死锁：延迟initialize先通过未初始化检查，另一initialize完成后，update持有实验锁等待umask，而前一initialize持有umask等待实验锁。子进程中的真实线程测试已复现并修复；官方写入口统一实验锁→umask，创建锁相关目录/文件时直接使用0700/0600。初始化的响应序号也在锁内读取，保证与本次返回ledger属于同一次提交。
+- 2026-09-05已将代码提交`e32c15e`发布到现有生产服务器，全部绑定源码摘要和公网v5接口验证通过；部署本身未初始化影子实验。
+- 本地与服务器的行情门禁问题不同：本地五股sidecar摘要不一致；服务器最初三股缺少sidecar。服务器正常提供方刷新已修复YINN，NVDA/GOOGL遇到Yahoo HTTP 429而保留旧缓存。真实前向研究仍不能绕过来源门禁，也不能把部署或合成回归当作候选准确率提升证据。

@@ -345,3 +345,22 @@
 - 接口重构后，原状态锁错误注入测试仍指向已移除的`shadow_operations.run_shadow_snapshot`导入而失败；将注入点移至实际`shadow_runner._experiment_lock`，保留原错误分类与零状态写入断言。
 - 修复后运维+CLI专项35项、全部Shadow五模块169项通过；静态编译通过，冻结spec摘要保持不变。测试只使用临时合成输入，真实行情与状态未修改。
 - 系统Python无pytest依赖的运维/CLI兼容入口`35/35`通过；本次验证范围覆盖所有修改的锁入口及原有代际链、恢复、复权与评估协议。
+
+## 2026-09-05 Shadow 运维发布完成
+
+- 权限环境更新后恢复已授权的部署，核对GitHub main与代码提交`e32c15eaeefce26e8a2f1596b8c39d2f173c91d6`一致；仅发布README与三个Shadow运维模块。
+- 发布包SHA-256为`5ef6cef1f46570dd156d3b0ca76fa633de54937806d11bbcd0aa091e7f60b9c1`。服务器发布前备份与清单位于`/home/eric/kk2/.deploy-backups/e32c15e-release.BKZyyV/manifest.txt`；自动回滚路径已随发布脚本准备，本次发布无需触发回滚。
+- 候选文件及全部未修改算法依赖摘要在发布前、发布后均验证一致；服务器使用既有Python 3.12.3 / numpy 2.5.2 / pandas 3.0.5。`kk2`于2026-09-05 08:34:29 CST重新启动，验收时active、NRestarts=0。
+- 内部及公网v5 sample API均返回900根K线；公网HTTPS首页200，HTTP按308跳转至`https://43.160.201.247:8443/`。本地11个行情缓存变更未进入提交或部署。
+- 官方status返回UNINITIALIZED，并确认`/home/eric/.local/state/kk2-shadow`不存在。没有运行initialize/update，也没有生成真实前向绩效。
+- 生产preflight发现YINN/NVDA/GOOGL缺少来源元数据。使用原数据服务的行情事务锁先备份至`/home/eric/kk2/.deploy-backups/e32c15e-inputs-25f_6tk_`，再各尝试一次正常提供方刷新。
+- YINN经Yahoo成功刷新至2026-09-03，2501根，adjusted来源与CSV/sidecar摘要校验通过。NVDA和GOOGL被Yahoo HTTP 429限流，服务回退保留旧缓存，没有手工生成或重算其元数据。
+- 刷新后复核preflight仅剩NVDA/GOOGL两项来源缺失，退出码3/DATA_BLOCKED；实验目录仍不存在，kk2保持active。
+- 部署阻塞已解除；当前剩余条件为补齐可信行情来源，以及等待2026-09-05之后合法共同交易日及后续成熟样本。v6仍是预注册候选，生产v5未变。
+
+### 本次发布运行记录
+
+| 现象 | 处理与结果 |
+|---|---|
+| 远端bash提示zh_CN.UTF-8 locale不可用 | 非致命警告；摘要、发布与健康检查全部成功 |
+| NVDA/GOOGL提供方返回HTTP 429 | 每只仅尝试一次，保留已有缓存及备份；停止连续重试并保持DATA_BLOCKED |
