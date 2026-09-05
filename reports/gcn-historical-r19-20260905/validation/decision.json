@@ -1,0 +1,12 @@
+{
+  "research_version": "gcn-historical-r19",
+  "selected": "JF-base-low-confirm2",
+  "status": "rejected_keep_v5",
+  "validation_start": "2024-08-27",
+  "validation_end": "2025-08-26",
+  "failures": [
+    "no_material_improvement"
+  ],
+  "recommended": "v5",
+  "production_changed": false
+}

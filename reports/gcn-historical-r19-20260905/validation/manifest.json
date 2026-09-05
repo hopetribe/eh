@@ -1,0 +1,51 @@
+{
+  "research_version": "gcn-historical-r19",
+  "stage": "validation",
+  "training_manifest_sha256": "2c07b1409149a4575d191f2e20f8fb1f9e5a5286998255f93fc5310a72670f5b",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "protocol_sha256": "5f0df8b423f81318190a1b10b1db15f1ded0cd40c7cd00a45fe1e82c8bf79f0e",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r4.py": "7991b106f8b6f0925e601e44bb1ad394ffb23ed69eeadccac892c3d084dfa5e4",
+    "gcn/backtest/signal_research_r3.py": "68a856940485cae65ea4f56712fbc72a6098b24d997ffbbb0e84e71644283342",
+    "gcn/backtest/signal_research_r2.py": "8cb1dd0e4c1ec10f7b047aef2339994e22909238a1809f13960ed5234cca6a8e",
+    "gcn/backtest/historical_research.py": "7313a5ba7c8d63a451dbf9de874c189eb379b7d39ec7acc893e3ec895fd5b5bc",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "f408aa99cd6ce07c3233a1a3ddb06d8c12bcc93e07297912201632c5076861df",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/backtest/signal_research_r17.py": "d57c90d588cd4894b0c9f1eaba096fdd4ab21c229f6ef506a47b542f3b206e26",
+    "gcn/backtest/signal_research_r18.py": "baf27acc93b18a44049cae16e6013a992891aea43d621d05af981c6c4e574ce6",
+    "gcn/backtest/signal_research_r19.py": "27185ea6780a720870001036708aa5a71075644c0ed4c154ae5ee3121ac0306f",
+    "gcn/backtest/signal_research_r7_validation.py": "f7fdf58eb0a8d5c482b119e415016b3814776b45209142e61f4f546fb4f51e91",
+    "gcn/backtest/signal_research_r19_validation.py": "4c81a702b93a356f8e89ddba99b00c81c74cb113bcbb1f107191ccf68f4456f7"
+  },
+  "outputs": {
+    "comparisons.csv": "63a94f92e6a2e9d46aec5305a8a99d5dc4c169299bb39948942c97941f14d69b",
+    "decision.json": "525aa795e33ad1597f20b129667f4bf59cb6fbdb73edf5cb0bd00d8d3c59086c",
+    "events.csv": "49412186aaf1b3a83c0b1b561fb659482755631aae7fb56f73eacd73559eef7b",
+    "missed_turns.csv": "b7b41c3beb64c911e9501671da19359b3717366378d5ef223cb9e4fc91042a83",
+    "protocol.md": "5f0df8b423f81318190a1b10b1db15f1ded0cd40c7cd00a45fe1e82c8bf79f0e",
+    "trades.csv": "bd2e353684fb9036a562eb2879e16760e34fa200b8487fbb1857a73a309e5e37"
+  },
+  "entry_floor_col": "ENTRY_FLOOR",
+  "entry_floor_confirm_bars": 2
+}
