@@ -1,0 +1,11 @@
+window,symbol,trades,b_trades,jf_trades,path_bars,reconciled
+validation,TQQQ,1,0,1,9,True
+validation,MSFT,1,1,0,0,True
+validation,NFLX,2,2,0,0,True
+validation,YINN,2,1,1,95,True
+validation,SNOW,0,0,0,0,True
+validation,TSLA,2,1,1,19,True
+validation,MRNA,3,1,2,66,True
+validation,NVDA,2,1,1,97,True
+validation,GOOGL,1,1,0,0,True
+validation,AAOI,3,1,2,18,True

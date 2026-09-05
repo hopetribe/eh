@@ -1,0 +1,32 @@
+{
+  "research_version": "gcn-historical-r20",
+  "stage": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "core": [
+    "TQQQ",
+    "MSFT",
+    "NFLX",
+    "YINN",
+    "SNOW",
+    "TSLA",
+    "MRNA",
+    "NVDA",
+    "GOOGL",
+    "AAOI"
+  ],
+  "window": [
+    "training",
+    "2021-08-27",
+    "2024-08-26"
+  ],
+  "trades": "original v5, next OPEN, trail 0.20, cost 0.001 each side",
+  "window_policy": "independent flat start, terminal liquidation; overlapping windows are not independent",
+  "risk": "pure JF only; entry OPEN minus signal-day LLV(LOW,3); nonpositive/missing R not divided",
+  "break_even": "entry OPEN / 0.999^2; reference price, not an assumed fill",
+  "paths": "causal held CLOSE fields only; real OPEN exit day CLOSE excluded",
+  "post_return": "strictly after first return to break-even, before original OPEN exit; post-hoc labels",
+  "mfe_mae_r": "nonnegative distances from entry to running held CLOSE peak/trough, divided by valid R",
+  "giveback_pp": "r16 gross peak gain minus actual exit gross gain; not portfolio performance",
+  "observation_state": "closed or terminal at cutoff: open/pending_signal/pending_trail"
+}

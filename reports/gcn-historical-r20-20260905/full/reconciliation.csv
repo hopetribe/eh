@@ -1,0 +1,11 @@
+window,symbol,trades,b_trades,jf_trades,path_bars,reconciled
+full,TQQQ,10,4,6,121,True
+full,MSFT,4,3,1,43,True
+full,NFLX,6,4,2,65,True
+full,YINN,15,7,8,283,True
+full,SNOW,11,5,6,247,True
+full,TSLA,7,5,2,61,True
+full,MRNA,8,2,6,225,True
+full,NVDA,3,2,1,245,True
+full,GOOGL,5,5,0,0,True
+full,AAOI,13,5,8,166,True

@@ -1,0 +1,11 @@
+window,symbol,trades,b_trades,jf_trades,path_bars,reconciled
+training,TQQQ,8,3,5,104,True
+training,MSFT,2,2,0,0,True
+training,NFLX,3,3,0,0,True
+training,YINN,12,5,7,126,True
+training,SNOW,8,4,4,122,True
+training,TSLA,4,3,1,42,True
+training,MRNA,4,0,4,159,True
+training,NVDA,0,0,0,0,True
+training,GOOGL,2,2,0,0,True
+training,AAOI,7,3,4,121,True
