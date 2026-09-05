@@ -1,0 +1,47 @@
+{
+  "research_version": "gcn-historical-r24",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "protocol_sha256": "1b955d5065b56d19adbe42340f180d8f464d191e33db2c98ff18b0167b30cd71",
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r4.py": "63915d84231d16c777095f814f8ed154875366a689d503f763f26a93136a5368",
+    "gcn/backtest/signal_research_r3.py": "68a856940485cae65ea4f56712fbc72a6098b24d997ffbbb0e84e71644283342",
+    "gcn/backtest/signal_research_r2.py": "8cb1dd0e4c1ec10f7b047aef2339994e22909238a1809f13960ed5234cca6a8e",
+    "gcn/backtest/historical_research.py": "6eed27998d2ef3be40f02ce483d7c2977177368f3c95ffe06be16b81e036a293",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "4148ce8ca509921f0efedbff87499c646d4be648d823a92c7c1c60619700a951",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/backtest/signal_research_r17.py": "d57c90d588cd4894b0c9f1eaba096fdd4ab21c229f6ef506a47b542f3b206e26",
+    "gcn/backtest/signal_research_r24.py": "0069166a05202f1bf9b6da5deffe62d688050af5feadb9f0d0c7516e86a18903"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "decision.json": "0acc02f96b3b68fd5a34c94a57f0233856533412427bc4d5ce2187b767756c5d",
+    "events.csv": "25afaf98e4d3596d7d060f02103fdd75ce76228988f2314f3262193c0db5be9f",
+    "missed_turns.csv": "a0e22ec04399a01b5296e9691328fde99088366715237096645930940ec68ba7",
+    "protocol.md": "1b955d5065b56d19adbe42340f180d8f464d191e33db2c98ff18b0167b30cd71",
+    "trades.csv": "7bf978a3581c85e3f60c453a5efa913e6008a10c7fc1caca1f8fc1cafa4dc5ea",
+    "training.csv": "db601a7226555a2f1924e0b344579479cbf936285464b5c7e1b993503aa943bc"
+  },
+  "entry_joint_pressure_col": "ENTRY_JOINT_PRESSURE",
+  "joint_pressure_reference_cost": 0.001,
+  "joint_pressure_factor_threshold": 1.0
+}

@@ -1,0 +1,31 @@
+{
+  "research_version": "gcn-historical-r25",
+  "stage": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "window": [
+    "validation",
+    "2024-08-27",
+    "2025-08-26"
+  ],
+  "core": [
+    "TQQQ",
+    "MSFT",
+    "NFLX",
+    "YINN",
+    "SNOW",
+    "TSLA",
+    "MRNA",
+    "NVDA",
+    "GOOGL",
+    "AAOI"
+  ],
+  "input": "both frozen r24 windows and parent prices; no order simulation or new candidate returns",
+  "observations": "exit-day CLOSE through the CLOSE before actual next entry OPEN, or window end",
+  "signal_state": "full-history raw counts and causal Setup state; no exit-time reset or future backfill",
+  "reference": "original entry OPEN / 0.999^2; not a new fill or recovery of realized losses",
+  "posthoc": "original horizon and completed trade outcomes belong only to episode-level attribution",
+  "secondary_horizon": "exit-date inclusive, original exit-date exclusive, may extend beyond reentry",
+  "censoring": "no observed reference reclaim or reentry by episode end is right-censored",
+  "stopping": "r24 stays rejected; no later promotion windows or threshold fitting"
+}

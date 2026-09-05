@@ -1,0 +1,11 @@
+symbol,v5_trades,candidate_trades,joint_exits,episodes,flat_closes,expected_flat_closes,reconciled
+TQQQ,8,8,1,1,71,71,True
+MSFT,2,2,0,0,0,0,True
+NFLX,3,3,0,0,0,0,True
+YINN,12,13,3,3,49,49,True
+SNOW,8,8,2,2,141,141,True
+TSLA,4,4,0,0,0,0,True
+MRNA,4,4,1,1,374,374,True
+NVDA,0,0,0,0,0,0,True
+GOOGL,2,2,0,0,0,0,True
+AAOI,7,7,2,2,283,283,True
