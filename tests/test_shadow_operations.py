@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import stat
+import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -141,8 +143,8 @@ def test_initialize_maps_state_lock_failure_to_integrity_error():
             symbol: _bars(dates)
             for symbol in spec["universe"]["core_symbols"]
         })
-        original_run = shadow_operations.run_shadow_snapshot
-        shadow_operations.run_shadow_snapshot = (
+        original_lock = shadow_runner._experiment_lock
+        shadow_runner._experiment_lock = (
             lambda *_args, **_kwargs: (_ for _ in ()).throw(
                 PermissionError("blocked")
             )
@@ -155,7 +157,7 @@ def test_initialize_maps_state_lock_failure_to_integrity_error():
             else:
                 raise AssertionError("state lock errors must fail closed")
         finally:
-            shadow_operations.run_shadow_snapshot = original_run
+            shadow_runner._experiment_lock = original_lock
 
         assert not state_root.exists()
 
@@ -932,3 +934,94 @@ def test_concurrent_updates_report_exactly_one_committed_transition():
             "NO_CHANGE", "UPDATED",
         ]
         assert {result["sequence"] for result in results} == {2}
+
+
+def _exercise_initialize_update_lock_race():
+    """Use a child process so a real lock inversion cannot hang the suite."""
+    spec = json.loads(_SPEC_PATH.read_text(encoding="utf-8"))
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        data_dir, state_root = root / "data", root / "state"
+        _write_adjusted_inputs(data_dir, {
+            symbol: _bars([
+                "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04",
+                "2026-09-08",
+            ]) for symbol in spec["universe"]["core_symbols"]
+        })
+        prepared = threading.Event()
+        resume_initialize = threading.Event()
+        update_locked = threading.Event()
+        initialize_attempted_lock = threading.Event()
+        outcomes = {}
+        original_capture = shadow_operations.capture_adjusted_snapshot
+        original_lock = shadow_runner._experiment_lock
+
+        def paused_capture(*args, **kwargs):
+            snapshot = original_capture(*args, **kwargs)
+            if threading.current_thread().name == "delayed-initialize":
+                prepared.set()
+                assert resume_initialize.wait(5), "initializer was not resumed"
+            return snapshot
+
+        @contextmanager
+        def ordered_lock(*args, **kwargs):
+            thread_name = threading.current_thread().name
+            if thread_name == "delayed-initialize":
+                initialize_attempted_lock.set()
+            with original_lock(*args, **kwargs):
+                if thread_name == "concurrent-update":
+                    update_locked.set()
+                    assert initialize_attempted_lock.wait(5), (
+                        "initializer did not reach the experiment lock"
+                    )
+                yield
+
+        def run_operation(name, operation):
+            try:
+                outcomes[name] = operation(_SPEC_PATH, data_dir, state_root)
+            except Exception as error:
+                outcomes[name] = error
+
+        initializer = threading.Thread(
+            target=run_operation, args=("initialize", initialize_shadow),
+            name="delayed-initialize", daemon=True,
+        )
+        updater = threading.Thread(
+            target=run_operation, args=("update", update_shadow),
+            name="concurrent-update", daemon=True,
+        )
+        shadow_operations.capture_adjusted_snapshot = paused_capture
+        shadow_runner._experiment_lock = ordered_lock
+        try:
+            initializer.start()
+            assert prepared.wait(5), "initializer did not capture input"
+            initialized = initialize_shadow(_SPEC_PATH, data_dir, state_root)
+            updater.start()
+            assert update_locked.wait(5), "update did not acquire its lock"
+            resume_initialize.set()
+            initializer.join(timeout=3)
+            updater.join(timeout=3)
+            assert not initializer.is_alive() and not updater.is_alive(), (
+                "initialize and update deadlocked while acquiring locks"
+            )
+            assert isinstance(outcomes["initialize"], ShadowLifecycleError)
+            assert "已经初始化" in str(outcomes["initialize"])
+            assert outcomes["update"]["code"] == "NO_CHANGE"
+            assert outcomes["update"]["sequence"] == initialized["sequence"]
+        finally:
+            resume_initialize.set()
+            shadow_operations.capture_adjusted_snapshot = original_capture
+            shadow_runner._experiment_lock = original_lock
+
+
+def test_delayed_initialize_and_concurrent_update_do_not_deadlock():
+    completed = subprocess.run(
+        [sys.executable, "-c", (
+            "from tests.test_shadow_operations import "
+            "_exercise_initialize_update_lock_race; "
+            "_exercise_initialize_update_lock_race()"
+        )],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, timeout=20, check=False,
+    )
+    assert completed.returncode == 0, completed.stderr

@@ -95,7 +95,14 @@ def _experiment_lock(
     """以进程内互斥+相邻flock串行化首次发布和全部增量提交。"""
     lock_dir = state_root / experiment_id
     if create:
-        lock_dir.mkdir(parents=True, exist_ok=True)
+        # Set modes at creation: waiting for this lock must not hold an umask lock.
+        missing_directories = []
+        directory = lock_dir
+        while not directory.exists():
+            missing_directories.append(directory)
+            directory = directory.parent
+        for directory in reversed(missing_directories):
+            directory.mkdir(mode=0o700, exist_ok=True)
     elif not lock_dir.is_dir():
         raise ShadowRunnerLifecycleError("影子实验尚未初始化")
     lock_path = lock_dir / f".{spec_hash}.lock"
@@ -105,7 +112,10 @@ def _experiment_lock(
     with _THREAD_LOCKS_GUARD:
         thread_lock = _THREAD_LOCKS.setdefault(lock_key, threading.Lock())
     with thread_lock:
-        with lock_path.open("a+b" if create else "rb") as lock_file:
+        flags = os.O_RDWR | os.O_CREAT if create else os.O_RDONLY
+        with os.fdopen(
+            os.open(lock_path, flags, 0o600), "a+b" if create else "rb",
+        ) as lock_file:
             lock_mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
             fcntl.flock(lock_file.fileno(), lock_mode)
             try:

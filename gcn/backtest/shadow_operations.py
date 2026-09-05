@@ -19,7 +19,6 @@ import pandas as pd
 from gcn.backtest import shadow_runner
 from gcn.backtest.shadow_runner import (
     derive_shadow_boundaries,
-    run_shadow_snapshot,
 )
 from gcn.backtest.shadow_validation import (
     canonical_spec_hash,
@@ -359,13 +358,23 @@ def initialize_shadow(
             "snapshot_sha256": snapshot.snapshot_sha256,
             "spec_hash": canonical_spec_hash(spec),
         }
-    _validate_private_state_tree(state_root)
+    spec_hash = canonical_spec_hash(spec)
+    experiment_dir = state_root / spec["experiment_id"] / spec_hash
     try:
-        with _private_state_umask():
-            ledger = run_shadow_snapshot(
-                spec, snapshot.frames, state_root,
-                operation="initialize",
+        with shadow_runner._experiment_lock(
+            state_root, spec["experiment_id"], spec_hash,
+        ):
+            _validate_private_state_tree(state_root)
+            with _private_state_umask():
+                ledger = shadow_runner._run_shadow_update_locked(
+                    spec, None, state_root, captured_frames=snapshot.frames,
+                    operation="initialize",
+                )
+            current = shadow_runner._read_current(
+                experiment_dir, repair_cache=False,
             )
+    except ShadowOperationError:
+        raise
     except shadow_runner.ShadowRunnerDataBlockedError as error:
         raise ShadowDataBlockedError(str(error)) from error
     except shadow_runner.ShadowRunnerLifecycleError as error:
@@ -374,14 +383,6 @@ def initialize_shadow(
         raise ShadowIntegrityError("影子状态不可写或不可锁定") from error
     except ValueError as error:
         raise ShadowIntegrityError(str(error)) from error
-    spec_hash = canonical_spec_hash(spec)
-    experiment_dir = state_root / spec["experiment_id"] / spec_hash
-    try:
-        current = json.loads(
-            (experiment_dir / "CURRENT").read_text(encoding="utf-8")
-        )
-    except (OSError, json.JSONDecodeError) as error:
-        raise ShadowIntegrityError("初始化后CURRENT不可读") from error
     return {
         "code": "INITIALIZED",
         "experiment_id": spec["experiment_id"],
