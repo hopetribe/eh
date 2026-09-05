@@ -1,0 +1,50 @@
+{
+  "research_version": "gcn-historical-r12",
+  "stage": "validation",
+  "training_manifest_sha256": "0c529f75a0d288c35f2e2855ce4e2f66129d7ca624eefe33736ee85ff1ca04c4",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "protocol_sha256": "7f483e9c178e7df7ab30a60adb6f9a8deff4600244bec1312b00813b2718d9a1",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r4.py": "dce126286ac66b1ceee3703b6cb0cb84395a0361557dc5e0ccd984aa6ad3594e",
+    "gcn/backtest/signal_research_r3.py": "68a856940485cae65ea4f56712fbc72a6098b24d997ffbbb0e84e71644283342",
+    "gcn/backtest/signal_research_r2.py": "8cb1dd0e4c1ec10f7b047aef2339994e22909238a1809f13960ed5234cca6a8e",
+    "gcn/backtest/historical_research.py": "d12a300c2aebd87b2f0b7e5b03f4af8e8cc5bac21da1916004601b61103afa16",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "9dd123ccd64549453f42a3d6e010da7d51e8fc4c82d9a2dab464dbe0e946f9ec",
+    "gcn/recipes/gcn_main.py": "b2f1992f649cc1a5837827beb66ae87ff4b93ea54bec8c995b49d8954018173d",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/backtest/signal_research_r5.py": "1899aae19be0597101b805be889645d74e6a5e214e2bcb772ef5de255de20ca3",
+    "gcn/backtest/signal_research_r6.py": "a0c2bab3ba4be79c72a750e42609d24f5a82f699953b901cd85080662e653dab",
+    "gcn/backtest/signal_research_r7.py": "2f68c5d868ed566e0eb4968fd668314f3eaf0adaec2201b4c0097a65bf8e9185",
+    "gcn/backtest/signal_research_r12.py": "4c112f51777b2b57f8a067f867dd7eb0c96acd3f33b411961bdfc111e734d570",
+    "gcn/backtest/signal_research_r7_validation.py": "718afc6ad9425dea8f4b66e42cd941eb2179f1e538f80fab120c3cde1952a0a7",
+    "gcn/backtest/signal_research_r12_validation.py": "ca93a15c26fb4f61708587ebecbc43e1b8a48e4083e1c8e579607a7edae2e7de"
+  },
+  "outputs": {
+    "comparisons.csv": "637845e09ddb3a743b1f094aebe4ead5c89165355939098c62942833b96f38eb",
+    "decision.json": "1b1b12b9fe66b91f5f16adc2b82351d0cb5eca023c65adf9691d3f1a9eb381dc",
+    "events.csv": "a28c347d0594513c69e7e430256eeb74d23aac8bf67ab903d1a90cb0acf93dd2",
+    "missed_turns.csv": "ae0a1c55c5a96a0b80ee0d2df79f9b12cfd1426e807cc5bc136ca6d981c592f5",
+    "protocol.md": "7f483e9c178e7df7ab30a60adb6f9a8deff4600244bec1312b00813b2718d9a1",
+    "trades.csv": "1fadcd550b3f489be8f8f8e4313dedaf8c793360819925460c82d8baf785dc05"
+  }
+}

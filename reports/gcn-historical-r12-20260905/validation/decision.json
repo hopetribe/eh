@@ -1,0 +1,12 @@
+{
+  "research_version": "gcn-historical-r12",
+  "selected": "P-confirm5-volume20",
+  "status": "rejected_keep_v5",
+  "validation_start": "2024-08-27",
+  "validation_end": "2025-08-26",
+  "failures": [
+    "win"
+  ],
+  "recommended": "v5",
+  "production_changed": false
+}
