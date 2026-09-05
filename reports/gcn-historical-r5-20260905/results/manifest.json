@@ -1,0 +1,43 @@
+{
+  "research_version": "gcn-historical-r5",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "protocol_sha256": "0c7258dddd2eea0bb244bf712ff28d9deac2ea484b41222b50fbcf4c5d5694a6",
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r4.py": "c09e5621bc095790f8064da65efa39542469e033fc31f54e29fe1b40e0a10d66",
+    "gcn/backtest/signal_research_r3.py": "68a856940485cae65ea4f56712fbc72a6098b24d997ffbbb0e84e71644283342",
+    "gcn/backtest/signal_research_r2.py": "8cb1dd0e4c1ec10f7b047aef2339994e22909238a1809f13960ed5234cca6a8e",
+    "gcn/backtest/historical_research.py": "217135b1ea4a866e2322b681532b18a3c05f8bb4eca719a3d16c428352ef8df5",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "1c91ad49966b31447a0b2ccd8c1feda6852e3b56c18cea29b94e851374805e64",
+    "gcn/recipes/gcn_main.py": "b2f1992f649cc1a5837827beb66ae87ff4b93ea54bec8c995b49d8954018173d",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/backtest/signal_research_r5.py": "1899aae19be0597101b805be889645d74e6a5e214e2bcb772ef5de255de20ca3"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "decision.json": "8edf3ee7cadd816fce61efa2c11dbd8e7f71d81d6dd2d50e95dc8157fd7d31f2",
+    "events.csv": "8b6f80450c80bc9681767dec7b50127e55327ad5da9be89a5e0df71e1520e307",
+    "missed_turns.csv": "c73596ce822d76832b426d7cd2876d580e8e2e863f192d6986c467fdedb4652f",
+    "protocol.md": "0c7258dddd2eea0bb244bf712ff28d9deac2ea484b41222b50fbcf4c5d5694a6",
+    "trades.csv": "a41488546a10a401fadd035f4a40edbb76c696f7327cd434a3423c42c74cf6ac",
+    "training.csv": "4d32872cda35e167b683a26f37165d7c8a6a4ca5fbf98d391e6e25cb33617bfe"
+  }
+}
