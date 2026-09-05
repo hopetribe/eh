@@ -1,0 +1,10 @@
+{
+  "research_version": "gcn-historical-r9",
+  "selected": "P-confirm5-v5profit50",
+  "status": "passed_validation_pending_stress",
+  "validation_start": "2024-08-27",
+  "validation_end": "2025-08-26",
+  "failures": [],
+  "recommended": "v5",
+  "production_changed": false
+}

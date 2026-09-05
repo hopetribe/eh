@@ -294,6 +294,33 @@ def test_conditional_exit_requires_an_explicit_existing_column_pair():
             res, ["ENTRY"], ["EXIT"], 0, None, entry_exit_cols=invalid))
 
 
+def test_entry_profit_enable_locks_signal_day_and_resets_for_each_entry():
+    res = _trade_frame(13)
+    res["OPEN"] = [100., 100., 125., 110., 110., 100., 125., 110., 110., 100., 125., 110., 110.]
+    res["CLOSE"] = [100., 130., 114., 110., 100., 130., 114., 110., 100., 130., 114., 110., 110.]
+    res.loc[res.index[[0, 4, 8]], "ENTRY"] = True
+    res.loc[res.index[[3, 7, 11]], "EXIT"] = True
+    res["PROTECT"] = [True, False, False, False, False, True, True, True, True, False, False, False, False]
+    bt = _one_strategy(res, ["ENTRY"], ["EXIT"], .001, None,
+                       trail=.20, profit_keep=.50, entry_profit_enabled_col="PROTECT")
+    assert [(t["i"], t["j"], t["exit_reason"]) for t in bt["trades"]] == [
+        (1, 3, "profit_lock"), (5, 8, "signal"), (9, 11, "profit_lock")]
+    assert np.allclose([t["ret"] for t in bt["trades"]], 1.1 * .999**2 - 1)
+
+
+def test_entry_profit_enable_rejects_non_boolean_non_null_settings():
+    res = _trade_frame(5)
+    for invalid in (0, 1, "false", "True", np.inf, {}, [True]):
+        res["PROTECT"] = pd.Series([invalid, True, True, True, True], index=res.index, dtype=object)
+        _assert_value_error("entry_profit_enabled_col", lambda: _one_strategy(
+            res, ["ENTRY"], ["EXIT"], .001, None, trail=.20, profit_keep=.50,
+            entry_profit_enabled_col="PROTECT"))
+    for column in ("MISSING", False, ["PROTECT"]):
+        _assert_value_error("entry_profit_enabled_col", lambda: _one_strategy(
+            res, ["ENTRY"], ["EXIT"], .001, None, trail=.20, profit_keep=.50,
+            entry_profit_enabled_col=column))
+
+
 def test_profit_lock_arms_at_trail_gain_and_exits_at_next_open():
     res = _trade_frame(5)
     res["OPEN"] = [10.0, 100.0, 110.0, 90.0, 90.0]

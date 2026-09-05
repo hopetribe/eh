@@ -1,0 +1,15 @@
+{
+  "research_version": "gcn-historical-r9",
+  "selected": "P-confirm5-v5profit50",
+  "status": "rejected_keep_v5",
+  "failures": [
+    "full5y_cagr",
+    "without_AAOI_cagr",
+    "cost025_cagr",
+    "leave_one_out_cagr"
+  ],
+  "recommended": "v5",
+  "production_changed": false,
+  "evidence": "retrospective_only",
+  "neighborhood_status": "not_run_failed_stress"
+}
