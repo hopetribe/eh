@@ -219,6 +219,37 @@ def test_initial_hard_stop_confirms_at_close_and_exits_at_next_open():
     assert np.isclose(trade["ret"], -0.20)
 
 
+def test_entry_specific_stop_is_locked_from_signal_day_and_resets_next_trade():
+    res = _trade_frame(8)
+    res["OPEN"] = [100, 100, 91, 95, 100, 90, 88, 88]
+    res["CLOSE"] = [100, 94, 91, 95, 94, 88, 88, 88]
+    res.loc[res.index[[0, 3]], "ENTRY"] = True
+    res["RISK"] = [0.05, 0.90, 0.01, np.nan, 0.05, 0.05, 0.05, 0.05]
+    result = _one_strategy(res, ["ENTRY"], ["EXIT"], 0, None,
+                           trail=0.20, entry_hard_stop_col="RISK")
+    first, second = result["trades"]
+    assert first["i"] == 1 and first["j"] == 2 and first["exit_reason"] == "hard_stop"
+    assert np.isclose(first["ret"], -.09)  # 开盘跳空：不伪造成5%止损成交
+    assert second["i"] == 4 and second["j"] == 8 and second["exit_reason"] == "terminal"
+    fallback = _one_strategy(res, ["ENTRY"], ["EXIT"], 0, None,
+                             hard_stop=.10, entry_hard_stop_col="RISK")
+    assert fallback["trades"][1]["j"] == 6
+    assert fallback["trades"][1]["exit_reason"] == "hard_stop"
+
+
+def test_entry_specific_stop_rejects_invalid_fractions_instead_of_disabling_risk():
+    res = _trade_frame(3)
+    res.loc[res.index[0], "ENTRY"] = True
+    for invalid in (0, 1, -.1, float("inf"), float("-inf"), True, "0.05"):
+        res["RISK"] = pd.Series([invalid, np.nan, np.nan], index=res.index, dtype=object)
+        try:
+            _one_strategy(res, ["ENTRY"], ["EXIT"], 0, None, entry_hard_stop_col="RISK")
+        except ValueError as exc:
+            assert "entry_hard_stop_col" in str(exc)
+        else:
+            raise AssertionError(f"非法入场风险比例未拒绝: {invalid!r}")
+
+
 def test_profit_lock_arms_at_trail_gain_and_exits_at_next_open():
     res = _trade_frame(5)
     res["OPEN"] = [10.0, 100.0, 110.0, 90.0, 90.0]
