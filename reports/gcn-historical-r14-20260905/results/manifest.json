@@ -1,0 +1,40 @@
+{
+  "research_version": "gcn-historical-r14",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "protocol_sha256": "cd83ffa58bc87ed9698fdf36c31d66cd5486064de5e3deb9cdc81bd3bcad2764",
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r14.py": "84ca7564d25e6bca20f98a0278eb207bf1af073de0251a4051e263bd24a09c1a",
+    "gcn/backtest/historical_research.py": "d12a300c2aebd87b2f0b7e5b03f4af8e8cc5bac21da1916004601b61103afa16",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "9dd123ccd64549453f42a3d6e010da7d51e8fc4c82d9a2dab464dbe0e946f9ec",
+    "gcn/recipes/gcn_main.py": "d50e8fc4f98fa7f1364746945b427e86e6beca1bf1ba5d65d13b40432f5e3bfc",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "decision.json": "62595acd338b500b9c4a73ec99028f04e43c16113d924ed91024c7ca1f7a42e6",
+    "events.csv": "93946b2388f0152000614703dc2002b5bb100e6e1b91066bed36f047189698fe",
+    "protocol.md": "cd83ffa58bc87ed9698fdf36c31d66cd5486064de5e3deb9cdc81bd3bcad2764",
+    "reconciliation.csv": "d78d1521417e2a0ee83de455bc8d62ca0b605fbee294fee3601b2081a6064576",
+    "states.csv": "dc3a4e95d4de511ea9f46c6edf1a09d7efee6d96f1bf320f6682e471d358015a",
+    "summary.csv": "55f664c6dbe2ca46b0232f165b1861034bcc3580120dc935489ce09d7479fa27"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "research_version": "gcn-historical-r14",
+  "stage": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "core": [
+    "TQQQ",
+    "MSFT",
+    "NFLX",
+    "YINN",
+    "SNOW",
+    "TSLA",
+    "MRNA",
+    "NVDA",
+    "GOOGL",
+    "AAOI"
+  ],
+  "windows": [
+    [
+      "training",
+      "2021-08-27",
+      "2024-08-26"
+    ],
+    [
+      "validation",
+      "2024-08-27",
+      "2025-08-26"
+    ],
+    [
+      "recent",
+      "2025-08-27",
+      "2026-08-27"
+    ],
+    [
+      "full",
+      "2021-08-27",
+      "2026-08-27"
+    ]
+  ],
+  "component_groups_overlap": true,
+  "outcome": "next OPEN to twentieth CLOSE, complete within window; gross returns"
+}

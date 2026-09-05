@@ -11,7 +11,10 @@ def test_raw_diagnostics_reproduce_v5_setups_and_exits_without_changing_defaults
     data = make_sample_data(900, seed=11)
     plain = compute_ehopt10(data, version="v5")
     diagnostic = compute_ehopt10(data, version="v5", diagnostics=True)
-    assert set(diagnostic) - set(plain) == {"B_ALL_RAW", "S_RAW", "JF_RAW"}
+    assert set(diagnostic) - set(plain) == {
+        "B_ALL_RAW", "S_RAW", "JF_RAW", "B_BASE_BULL", "B_STAGE_COMPONENT",
+        "B_BEAR_RECOVER", "B_CRASH_RECOVER",
+    }
     for col in plain:
         assert np.allclose(plain[col], diagnostic[col], equal_nan=True), col
     b_raw, s_raw, jf_raw = (diagnostic[k] for k in ("B_ALL_RAW", "S_RAW", "JF_RAW"))
