@@ -1,0 +1,14 @@
+{
+  "research_version": "gcn-historical-r24",
+  "selected": "JF-joint-pressure",
+  "status": "rejected_keep_v5",
+  "validation_start": "2024-08-27",
+  "validation_end": "2025-08-26",
+  "failures": [
+    "cagr",
+    "win",
+    "sharpe"
+  ],
+  "recommended": "v5",
+  "production_changed": false
+}
