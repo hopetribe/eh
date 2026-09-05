@@ -13,7 +13,7 @@ def test_raw_diagnostics_reproduce_v5_setups_and_exits_without_changing_defaults
     diagnostic = compute_ehopt10(data, version="v5", diagnostics=True)
     assert set(diagnostic) - set(plain) == {
         "B_ALL_RAW", "S_RAW", "JF_RAW", "B_BASE_BULL", "B_STAGE_COMPONENT",
-        "B_BEAR_RECOVER", "B_CRASH_RECOVER",
+        "B_BEAR_RECOVER", "B_CRASH_RECOVER", "S_BLOWOFF", "S_BEAR_RALLY", "S_CROSS", "S_DELAY",
     }
     for col in plain:
         assert np.allclose(plain[col], diagnostic[col], equal_nan=True), col
