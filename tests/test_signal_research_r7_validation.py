@@ -18,21 +18,26 @@ def test_validation_replays_only_frozen_winner_and_seals_separate_outputs(tmp_pa
     import json
     from pathlib import Path
     import pandas as pd
+    from gcn.backtest.signal_research_r7 import run_training
     from gcn.backtest.signal_research_r7_validation import run_validation, validation_failures
 
     root = Path(__file__).resolve().parents[1]
-    training = root / "reports/gcn-historical-r7-20260905/results"
+    # This integration exercises a same-source train/validate pair; the archived
+    # r7 report intentionally retains its older, immutable source identity.
+    training = tmp_path / "training"
+    output = tmp_path / "validation"
+    run_training(root / "reports/signal-audit-v5-review-20260904", training)
     original = (training / "manifest.json").read_bytes()
-    decision = run_validation(root / "reports/signal-audit-v5-review-20260904", training, tmp_path)
-    comparisons = pd.read_csv(tmp_path / "comparisons.csv").to_dict("records")
+    decision = run_validation(root / "reports/signal-audit-v5-review-20260904", training, output)
+    comparisons = pd.read_csv(output / "comparisons.csv").to_dict("records")
     assert [row["rule"] for row in comparisons] == ["v5", "P-confirm5"]
     assert decision["selected"] == "P-confirm5" and decision["recommended"] == "v5"
     assert decision["failures"] == validation_failures(comparisons[1], comparisons[0])
     assert decision["status"] == ("rejected_keep_v5" if decision["failures"] else "passed_validation_pending_stress")
-    events = pd.read_csv(tmp_path / "events.csv")
+    events = pd.read_csv(output / "events.csv")
     assert events.date.min() >= "2024-08-27" and events.outcome_date.max() <= "2025-08-26"
     assert (training / "manifest.json").read_bytes() == original
-    manifest = json.loads((tmp_path / "manifest.json").read_text())
+    manifest = json.loads((output / "manifest.json").read_text())
     assert manifest["training_manifest_sha256"] == hashlib.sha256(original).hexdigest()
     for name, digest in manifest["outputs"].items():
-        assert hashlib.sha256((tmp_path / name).read_bytes()).hexdigest() == digest
+        assert hashlib.sha256((output / name).read_bytes()).hexdigest() == digest
