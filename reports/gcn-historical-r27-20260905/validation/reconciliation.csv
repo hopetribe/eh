@@ -1,0 +1,11 @@
+symbol,actual_entries,expired_setups,eligible_at_expiry,waiting_rows,observation_rows,recovered,reconciled
+TQQQ,1,1,0,5,91,1,True
+MSFT,1,0,0,0,0,0,True
+NFLX,2,0,0,0,0,0,True
+YINN,2,1,0,5,88,1,True
+SNOW,0,2,2,10,115,1,True
+TSLA,2,0,0,0,0,0,True
+MRNA,3,0,0,0,0,0,True
+NVDA,2,1,0,5,91,1,True
+GOOGL,1,0,0,0,0,0,True
+AAOI,3,1,0,5,23,0,True

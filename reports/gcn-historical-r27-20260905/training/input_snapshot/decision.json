@@ -1,0 +1,30 @@
+{
+  "research_version": "gcn-historical-r22",
+  "stage": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "core": [
+    "TQQQ",
+    "MSFT",
+    "NFLX",
+    "YINN",
+    "SNOW",
+    "TSLA",
+    "MRNA",
+    "NVDA",
+    "GOOGL",
+    "AAOI"
+  ],
+  "window": [
+    "training",
+    "2021-08-27",
+    "2024-08-26"
+  ],
+  "trades": "original v5, next OPEN, trail 0.20, cost 0.001 each side",
+  "window_policy": "independent flat start, terminal liquidation; overlapping windows are not independent",
+  "attribution": "held intraday factor * held overnight factor * 0.999^2 reproduces actual net return",
+  "paths": "entry-day gap excluded; real OPEN exit includes only overnight factor, no later CLOSE",
+  "terminal": "last CLOSE boundary liquidation, no fictitious next OPEN gap",
+  "chain": "actual adjacent trades; flat_bars counts fully flat bars; overlapping pairs are not independent",
+  "statistics": "post-hoc descriptive factors and extrema, not entry filters or portfolio returns"
+}

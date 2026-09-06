@@ -1,0 +1,366 @@
+{
+  "schema_version": 2,
+  "complete": true,
+  "run_id": "bcede8a46e7dadc596075eb524228810b26fe8258c866723c30478c7c6190a8b",
+  "generated_at_utc": "2026-09-04T15:33:02.771397+00:00",
+  "code": {
+    "git_commit": "dfc188537afaefc1e1a942362efb1ce4f2bed5a9",
+    "algorithm_files": {
+      "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+      "gcn/backtest/engine.py": "5cb7b165f130b08ab1dcf7cf917a01c8af9c35fdb245adecefba503b36220d07",
+      "gcn/recipes/gcn_main.py": "94fdf9e6ddcd56047a2d23f9177a174d8a6fc203238db911503b221265a3f77c",
+      "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766"
+    },
+    "snapshots": {
+      "gcn/backtest/signal_audit.py": "source_snapshot/gcn/backtest/signal_audit.py",
+      "gcn/backtest/engine.py": "source_snapshot/gcn/backtest/engine.py",
+      "gcn/recipes/gcn_main.py": "source_snapshot/gcn/recipes/gcn_main.py",
+      "gcn/core/tdx.py": "source_snapshot/gcn/core/tdx.py"
+    }
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "integrity": {
+    "requested_window_complete": true,
+    "input_metadata_trusted": false,
+    "source_and_input_snapshots": true
+  },
+  "config": {
+    "interval": "1d",
+    "symbols_requested": [
+      "TQQQ",
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "SNOW",
+      "TSLA",
+      "MRNA",
+      "NVDA",
+      "TEM",
+      "GOOGL",
+      "AAOI"
+    ],
+    "symbols_included": [
+      "TQQQ",
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "SNOW",
+      "TSLA",
+      "MRNA",
+      "NVDA",
+      "TEM",
+      "GOOGL",
+      "AAOI"
+    ],
+    "selection_symbols": [
+      "TQQQ",
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "SNOW",
+      "TSLA",
+      "MRNA",
+      "NVDA",
+      "GOOGL",
+      "AAOI"
+    ],
+    "external_validation_symbols": [
+      "TEM"
+    ],
+    "start": "2021-08-27",
+    "end": "2026-08-27",
+    "cost": 0.001,
+    "splits": {
+      "train": [
+        "2021-08-27",
+        "2024-08-26"
+      ],
+      "validation": [
+        "2024-08-27",
+        "2025-08-26"
+      ],
+      "test": [
+        "2025-08-27",
+        "2026-08-27"
+      ],
+      "full": [
+        "2021-08-27",
+        "2026-08-27"
+      ]
+    },
+    "incumbent": "b-confirm5-ma20+jf|exit=S|trail=20%|hold=none",
+    "recommended": "b-confirm5-ma20+jf|exit=S|trail=20%|hold=none",
+    "candidate_count": 578,
+    "snapshot_inputs": true
+  },
+  "coverage": {
+    "calendar_basis": "union-of-full-history-inputs",
+    "reference_symbols": [
+      "TQQQ",
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "SNOW",
+      "TSLA",
+      "MRNA",
+      "NVDA",
+      "GOOGL",
+      "AAOI"
+    ],
+    "common_complete_end": "2026-08-27",
+    "requested_end": "2026-08-27",
+    "requested_end_complete": true,
+    "partial_history_symbols": [
+      "TEM"
+    ],
+    "complete_window_symbols": [
+      "TQQQ",
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "SNOW",
+      "TSLA",
+      "MRNA",
+      "NVDA",
+      "GOOGL",
+      "AAOI"
+    ],
+    "invalid_quality_symbols": [],
+    "missing_symbols": [],
+    "metadata_mismatch_symbols": [
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "MRNA",
+      "TEM",
+      "GOOGL"
+    ],
+    "metadata_untrusted_symbols": [
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "MRNA",
+      "TEM",
+      "GOOGL"
+    ],
+    "calendar_gaps": {},
+    "selection_symbols": [
+      "TQQQ",
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "SNOW",
+      "TSLA",
+      "MRNA",
+      "NVDA",
+      "GOOGL",
+      "AAOI"
+    ],
+    "external_validation_symbols": [
+      "TEM"
+    ],
+    "signal_diagnostic_symbols": [
+      "TQQQ",
+      "MSFT",
+      "NFLX",
+      "YINN",
+      "SNOW",
+      "TSLA",
+      "MRNA",
+      "NVDA",
+      "TEM",
+      "GOOGL",
+      "AAOI"
+    ]
+  },
+  "inputs": {
+    "TQQQ": {
+      "file": "TQQQ_1d.csv",
+      "sha256": "08f6196049809e94a4a430f2ef35b56785fe16977a10ec593a5cfaec48e64409",
+      "metadata_sha256": "9d6bd2c90c02d47b5e2f5b340f5506679fde8a67da171f531f60258bf3672089",
+      "snapshot_path": "input_snapshot/TQQQ_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/TQQQ_1d.csv.meta.json"
+    },
+    "MSFT": {
+      "file": "MSFT_1d.csv",
+      "sha256": "f0f89c50666aeffe9ee84609f946d7ed87f4885ed3a45b2d0c87c7679b801154",
+      "metadata_sha256": "861817c56c4a99b259365d2f6f4b85527ae99e72a6bba8e4cd4f8b6418abb3d5",
+      "snapshot_path": "input_snapshot/MSFT_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/MSFT_1d.csv.meta.json"
+    },
+    "NFLX": {
+      "file": "NFLX_1d.csv",
+      "sha256": "d4596d5b6ced620083c3e461f192faf9d812b251b629d03b7d5f79af169cff80",
+      "metadata_sha256": "17d864c6ca34e2d9fd1a1f8a3a9a43169aac3d105bcceaa449ff12cfab0487f7",
+      "snapshot_path": "input_snapshot/NFLX_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/NFLX_1d.csv.meta.json"
+    },
+    "YINN": {
+      "file": "YINN_1d.csv",
+      "sha256": "5f7632f35c4295169747b8a80d1d57bf3fe0ea9c836a694ec35fa924231b11fe",
+      "metadata_sha256": "4d5083d681d21b5daedd6373356ac432eafb6a9153481cb2ed98756a720ed160",
+      "snapshot_path": "input_snapshot/YINN_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/YINN_1d.csv.meta.json"
+    },
+    "SNOW": {
+      "file": "SNOW_1d.csv",
+      "sha256": "25a44cf60774fc895b56fc8aae6b1857ddeb79999a14b805e07f96acc7b7a27e",
+      "metadata_sha256": "1f9376fdb418fae4f543042aaa6ea9d90f08c271918a9119b922e24237bf7123",
+      "snapshot_path": "input_snapshot/SNOW_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/SNOW_1d.csv.meta.json"
+    },
+    "TSLA": {
+      "file": "TSLA_1d.csv",
+      "sha256": "703bf8a32f58103f60aee4d25303ee1d8d4009212e2048134fdbb32a942e1e5c",
+      "metadata_sha256": "b69eaac517d5b77826b48cd571ccbd8e605f71133d33342fd42aa9d4d5da8171",
+      "snapshot_path": "input_snapshot/TSLA_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/TSLA_1d.csv.meta.json"
+    },
+    "MRNA": {
+      "file": "MRNA_1d.csv",
+      "sha256": "1097f4762b6ca655f663a2146c3c52e2e274240e3ee3e69975be57d6558b519c",
+      "metadata_sha256": "31e249da18b4ecd0d23402b8df16231fa7034faebf5a5051f34dfbcc73605f6b",
+      "snapshot_path": "input_snapshot/MRNA_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/MRNA_1d.csv.meta.json"
+    },
+    "NVDA": {
+      "file": "NVDA_1d.csv",
+      "sha256": "20120beba1b1a2882d9b628be6118b9713792ee1b2c8e6f3007f36fda6d93cc8",
+      "metadata_sha256": "8d56061d4d9238a2eea7698ba68d8f2d92efd7d1601b656fee66dfed81574bb2",
+      "snapshot_path": "input_snapshot/NVDA_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/NVDA_1d.csv.meta.json"
+    },
+    "TEM": {
+      "file": "TEM_1d.csv",
+      "sha256": "ceed77b41d5c773e3b7e849e1a5158c09167f79f7291b6a605286bc7abef9507",
+      "metadata_sha256": "9a670f5414f30c69c5da1f13e9928e21a4860660c19e0289be02ee0b43c95d2a",
+      "snapshot_path": "input_snapshot/TEM_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/TEM_1d.csv.meta.json"
+    },
+    "GOOGL": {
+      "file": "GOOGL_1d.csv",
+      "sha256": "2f1eec15598b71114f24a9d9141db7328ade5b7abf676165781e2634851e4889",
+      "metadata_sha256": "3864c792999bc3c7e0629919856b4b5c4093749b0511339e028b5bff67cfa1ff",
+      "snapshot_path": "input_snapshot/GOOGL_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/GOOGL_1d.csv.meta.json"
+    },
+    "AAOI": {
+      "file": "AAOI_1d.csv",
+      "sha256": "cb4307da2b2ba28245edaf9cfd9774cd6b2f3828a6f08e7b3119b7179863a848",
+      "metadata_sha256": "eb013014d9f957f85efb3ffc259c24dc00801ca0f53ddcad94e1ce76b83a5f8d",
+      "snapshot_path": "input_snapshot/AAOI_1d.csv",
+      "metadata_snapshot_path": "input_snapshot/AAOI_1d.csv.meta.json"
+    }
+  },
+  "decision": {
+    "mode": "incremental-vs-incumbent",
+    "incumbent": "b-confirm5-ma20+jf|exit=S|trail=20%|hold=none",
+    "challengers_evaluated": 2,
+    "cagr_retention": 0.8,
+    "sharpe_tolerance": 0.1,
+    "mdd_not_higher": true,
+    "risk_effect_mdd_ratio": 0.95,
+    "risk_effect_worst_trade_pp": 5.0,
+    "known_test_used_for_promotion": false,
+    "decision_splits": [
+      "train",
+      "validation"
+    ],
+    "observational_only": [
+      "test",
+      "full"
+    ],
+    "challenger": "b-confirm5-ma20+jf|exit=S|trail=20%|hold=none|hard=12.5%",
+    "train": {
+      "passed": true,
+      "failed_reasons": [],
+      "min_trades": 30
+    },
+    "validation": {
+      "passed": false,
+      "failed_reasons": [
+        "cagr-retention",
+        "sharpe",
+        "mdd"
+      ],
+      "min_trades": 11
+    },
+    "eligible_challengers": 0,
+    "promoted": false,
+    "decision": "keep-incumbent"
+  },
+  "outputs": {
+    "signal_events.csv": {
+      "sha256": "1360633571ade5eebf8aa18b1769a4fc701f39d3364c981193a55dcf3badbc66",
+      "bytes": 75878,
+      "rows": 289
+    },
+    "signal_events_by_split.csv": {
+      "sha256": "18ce1fcb3cde202405ee1da80a8c8db0ca75b97a278030a3a8ccd159b96c6805",
+      "bytes": 75789,
+      "rows": 289
+    },
+    "missed_turns.csv": {
+      "sha256": "db7dc46641205ef37c3dc8f83e001e7077eecb27bc291115b6875ef3889173e3",
+      "bytes": 29041,
+      "rows": 494
+    },
+    "strategy_candidates.csv": {
+      "sha256": "35189d30b200aaf957f8c1df2abb66ca543938d74161b2879a09a8a4577976d0",
+      "bytes": 575440,
+      "rows": 578
+    },
+    "best_strategy_trades.csv": {
+      "sha256": "97f7e502e7989bdbec303a996c5b3d18759be615b790a0d9c6c11360a26d0427",
+      "bytes": 4609,
+      "rows": 82
+    },
+    "robustness_cost_stress.csv": {
+      "sha256": "ccdcd79ce627c8c5995857f503978da732d1b558cb84fe10bc32607547983ff6",
+      "bytes": 1648,
+      "rows": 6
+    },
+    "robustness_yearly.csv": {
+      "sha256": "6087f619b429f6dcbd351ec2567e925ee87cc6df66af11832f2d7322ffd85396",
+      "bytes": 2746,
+      "rows": 10
+    },
+    "robustness_leave_one_out.csv": {
+      "sha256": "f3f1c2fcd72198b5b0e66995405d4faa8ea2fec251a23b428f53fbcf8e57cac7",
+      "bytes": 4934,
+      "rows": 20
+    },
+    "robustness_ablation.csv": {
+      "sha256": "b07d4027229941e73907d3cc0b37ae31b85523a9da28e18e8fc00338878dc597",
+      "bytes": 1603,
+      "rows": 5
+    },
+    "robustness_entry_quality.csv": {
+      "sha256": "235f16eb1554903cbb6dd0b13c305e52f78187f25898f52c70339da331d1fd9b",
+      "bytes": 852,
+      "rows": 7
+    },
+    "robustness_b_confirmation.csv": {
+      "sha256": "66f444813014828ec7688b84cff946b81af7f3da0068c61a1eef1a7451f38c08",
+      "bytes": 348,
+      "rows": 4
+    },
+    "robustness_external_validation.csv": {
+      "sha256": "6a7f18e5b2757100fe642bdf61c645ca666aabbadfd4a980716af6391573ab9c",
+      "bytes": 1892,
+      "rows": 6
+    },
+    "data_audit.json": {
+      "sha256": "895f663cdbd1d4f74c0bab067df5c96e8a022645501be81dad53e40c8c04d064",
+      "bytes": 7704
+    },
+    "report.md": {
+      "sha256": "6eb25b6e16c9451072c9050321e3ab71ba3e265d6d3855406d50e69a2761e714",
+      "bytes": 19055
+    }
+  }
+}

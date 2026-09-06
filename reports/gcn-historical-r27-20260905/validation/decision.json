@@ -1,0 +1,29 @@
+{
+  "research_version": "gcn-historical-r27",
+  "stage": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "window": [
+    "validation",
+    "2024-08-27",
+    "2025-08-26"
+  ],
+  "core": [
+    "TQQQ",
+    "MSFT",
+    "NFLX",
+    "YINN",
+    "SNOW",
+    "TSLA",
+    "MRNA",
+    "NVDA",
+    "GOOGL",
+    "AAOI"
+  ],
+  "input": "frozen r22 original v5 orders and r26 training mechanism; no order simulation",
+  "waiting": "five historical bars become available only at expiry; pre-window position is unknown",
+  "observations": "expiry CLOSE onward; first later CLOSE above old Setup HIGH and current MID",
+  "termination": "next native Setup day excluded, otherwise window end; no recovery is right-censored",
+  "event_clocks": "Setup, expiry and first recovery each use their own next OPEN / 20th CLOSE gross labels",
+  "stopping": "no confirmation-window search, buyback strategy or production promotion"
+}
