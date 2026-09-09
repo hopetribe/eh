@@ -1,0 +1,10 @@
+{
+  "candidate": null,
+  "candidate_backtest_run": false,
+  "production_changed": false,
+  "reason": "no_independent_reentry_clock_passed",
+  "research_version": "gcn-historical-r34",
+  "stage": "training_reentry_clock_screen",
+  "status": "no_candidate",
+  "validation_run": false
+}

@@ -1,0 +1,44 @@
+{
+  "research_version": "gcn-historical-r31",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "protocol_sha256": "bf1e1bf5889e2458db5fd400a7f7a9073f2959e78e4e053d139b2f694ed65c36",
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r4.py": "1357ddf37fe4d99c182be670313fd2693066037ff628445c1eccc6bae5347a9b",
+    "gcn/backtest/signal_research_r3.py": "68a856940485cae65ea4f56712fbc72a6098b24d997ffbbb0e84e71644283342",
+    "gcn/backtest/signal_research_r2.py": "8cb1dd0e4c1ec10f7b047aef2339994e22909238a1809f13960ed5234cca6a8e",
+    "gcn/backtest/historical_research.py": "8e6aae45825cc87aa3de406e5a5af14f8f22da92cf973e80f4041d7660d93f03",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "5d19ede0fea0a7da637f93c4018a56d590843ed47c17c68ef45e3222565ae392",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/backtest/signal_research_r17.py": "d57c90d588cd4894b0c9f1eaba096fdd4ab21c229f6ef506a47b542f3b206e26",
+    "gcn/backtest/signal_research_r31.py": "d0431ef3cd9b1e6a143a699aea291cebfdfcbab2f988d918894c352a615627cc"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "decision.json": "7bf3c9f3627e06becfbb957c9cce3568082811008508cdf4296213068e78e968",
+    "events.csv": "e648952a2a80d90351adb3b0d52258bfffdbc76cede63fa03e74bedcbccd1003",
+    "missed_turns.csv": "dcd43e197b38472faff6beeabcb18e1757d0bb6977f9f662347184bc4dfd4ed9",
+    "protocol.md": "bf1e1bf5889e2458db5fd400a7f7a9073f2959e78e4e053d139b2f694ed65c36",
+    "trades.csv": "c0d459249e4ed9c635809f5101361be6680c47bca6eef77821b4d93e8ab0d1b3",
+    "training.csv": "af4adac5e758b5a9ecc453286c6df60f5944f273e21a30caf9bc11689dffa6d4"
+  }
+}

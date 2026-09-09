@@ -1,0 +1,11 @@
+symbol,actual_entries,b_trades,collision_trades,observed_b_closes,first_failures,entry_failures,recoveries,reconciled
+TQQQ,1,0,0,0,0,0,0,True
+MSFT,1,1,0,107,1,0,1,True
+NFLX,2,2,0,157,1,0,1,True
+YINN,2,1,0,19,0,0,0,True
+SNOW,0,0,0,0,0,0,0,True
+TSLA,2,1,0,37,0,0,0,True
+MRNA,3,1,0,66,1,0,1,True
+NVDA,2,1,0,18,1,0,1,True
+GOOGL,1,1,0,119,0,0,0,True
+AAOI,3,1,0,20,0,0,0,True

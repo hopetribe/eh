@@ -1,0 +1,4 @@
+scheme,events,high_events,high_coverage_pct,high_symbols,base_win_rate_pct,high_win_rate_pct,win_improvement_pp,base_interference_rate_pct,high_interference_rate_pct,interference_reduction_pp,b_high_events,jf_high_events,s_high_events,passed,failures
+in_sample,89,31,34.831460674157306,7,52.80898876404494,67.74193548387096,14.93294671982602,43.82022471910113,32.25806451612903,11.562160202972095,11,8,12,False,symbols
+expanding_time,55,16,29.09090909090909,7,56.36363636363636,50.0,-6.36363636363636,40.0,43.75,-3.75,11,1,4,False,"high_events,win_improvement,interference_reduction"
+leave_one_symbol,89,29,32.58426966292135,7,52.80898876404494,51.724137931034484,-1.0848508330104565,43.82022471910113,48.275862068965516,-4.455637349864389,10,8,11,False,"win_improvement,interference_reduction"

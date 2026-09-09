@@ -1,0 +1,30 @@
+{
+  "research_version": "gcn-historical-r28",
+  "stage": "diagnostic_only",
+  "recommended": "v5",
+  "production_changed": false,
+  "window": [
+    "recent",
+    "2025-08-27",
+    "2026-08-26"
+  ],
+  "core": [
+    "TQQQ",
+    "MSFT",
+    "NFLX",
+    "YINN",
+    "SNOW",
+    "TSLA",
+    "MRNA",
+    "NVDA",
+    "GOOGL",
+    "AAOI"
+  ],
+  "input": "frozen r22 original orders and r27 training mechanism; no order simulation",
+  "cohort": "actual original entry_b trades; B/JF collision retained; pure JF excluded",
+  "observation": "actual entry CLOSE through pre-exit CLOSE; terminal last CLOSE included",
+  "failure": "first finite CLOSE <= original Setup HIGH and current MID; later first both-above recovery",
+  "clocks": "confirmation, entry CLOSE, first failure use separate next OPEN / 20th CLOSE gross labels",
+  "trade_outcomes": "original net outcomes in separate table, only after actual exit observed",
+  "stopping": "no new exit rule, parameter scan or production promotion"
+}

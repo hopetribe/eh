@@ -1,0 +1,9 @@
+mechanism,triggered_episodes,mature_events,symbols,wins,win_rate_pct,interference,interference_rate_pct,median_net_pct,mean_net_pct,loo_min_win_pct,control_overlap_pct,status,failures
+expired-both-level,14,14,10,7,50.0,5,35.714285714285715,-2.2624027346868747,4.469558077298049,41.66666666666667,100.0,rejected,"control_only,low_win_rate,high_interference,nonpositive_median,fragile_leave_one_symbol"
+setup-high-reclaim,11,11,9,4,36.36363636363637,5,45.45454545454545,-4.642860105585833,-5.030904332326383,30.0,100.0,rejected,"low_win_rate,high_interference,nonpositive_median,fragile_leave_one_symbol,synonymous_r27_recovery"
+mid-reclaim,17,17,10,7,41.1764705882353,8,47.05882352941177,-3.6901705161226817,-2.2262961337118172,35.714285714285715,76.47058823529412,rejected,"low_win_rate,high_interference,nonpositive_median,fragile_leave_one_symbol,synonymous_r27_recovery"
+upper-breakout,12,12,8,7,58.333333333333336,5,41.666666666666664,0.16572027961763158,1.1001975585659414,50.0,91.66666666666667,rejected,"low_win_rate,high_interference,synonymous_r27_recovery"
+macd-zero-reclaim,20,20,10,8,40.0,9,45.0,-2.4132849131070113,-0.9671539314043557,35.294117647058826,70.0,rejected,"low_win_rate,high_interference,nonpositive_median,fragile_leave_one_symbol"
+dif-dea-reclaim,20,20,10,8,40.0,9,45.0,-2.4132849131070113,-0.9671539314043557,35.294117647058826,70.0,rejected,"low_win_rate,high_interference,nonpositive_median,fragile_leave_one_symbol"
+rsi50-reclaim,21,21,10,9,42.857142857142854,10,47.61904761904762,-1.9052797819586131,2.119729130727965,38.88888888888889,66.66666666666667,rejected,"low_win_rate,high_interference,nonpositive_median,fragile_leave_one_symbol"
+suppressed-raw-b,4,4,3,0,0.0,3,75.0,-13.233421582441313,-12.847662931461826,0.0,50.0,rejected,"insufficient_sample,low_win_rate,high_interference,nonpositive_median,fragile_leave_one_symbol"

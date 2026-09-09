@@ -1,0 +1,31 @@
+{
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r28.py": "5270f12e33953ef2d50fa6472ffaf1d952ca57b87010982960e97f3e8a6425aa",
+    "gcn/backtest/signal_research_r29.py": "3fd5598280c0e7b3762725118855d00d93d782f84e7c940e1bd79dbbf3b51f46",
+    "tests/test_signal_research_r29.py": "fdde50236ffce285c1105c5757fdc9fcfa7bc5cdf557e3b28b2085648dfefba0"
+  },
+  "candidate": "B-entry-day-invalidation",
+  "control": "v5",
+  "input_files": {
+    "reports/gcn-historical-r22-20260905/validation/trades.csv": "8bfb679947eadc95ebe139b5cf46f1ab94ddd9f9c57f8f72c8c4798e49ef3058",
+    "reports/gcn-historical-r28-20260906/validation/episodes.csv": "f0120573b1d7100aeac0ad9d80ffaef7aba8f46aadc8998b8d8991618604f032",
+    "reports/gcn-historical-r28-20260906/validation/observations.csv": "0764d1d6286f78571bcc147f5737a4abbed73996a250c54d37017aa4bec4a34e"
+  },
+  "inputs": {
+    "protocol": "95c8064ae1d7cec71d4deb534eeeb07d4804d79f49025c523a876a75955dffb0",
+    "r22_validation_manifest": "abd706a2a5eeee260c5cde656980d95fb79c0760c3033dbfed24333cf0db28ef",
+    "r28_validation_manifest": "ee1d7eeb171f30a75287baf60ca10953b65a03e714879651d0bc577bdeb6fb0a"
+  },
+  "outputs": {
+    "decision.json": "2de0ce4bd0d79278f34f24f3fbf33706290f8ad1b14a2d4d8ef814648b61c32a",
+    "entry_checks.csv": "dc4c3879cacbc4173f0a7afd98c044c9f6ff8bf33e5778ec522c4fe46a8ed245",
+    "proof.json": "66c00e880e291ac77c8ccd3f98e213f2c58eb0b7f917bcd20eb071e7f8a286da",
+    "protocol.md": "95c8064ae1d7cec71d4deb534eeeb07d4804d79f49025c523a876a75955dffb0"
+  },
+  "research_version": "gcn-historical-r29",
+  "window": [
+    "validation",
+    "2024-08-27",
+    "2025-08-26"
+  ]
+}

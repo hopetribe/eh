@@ -1,0 +1,14 @@
+mechanism,emitted_events,held_triggers,symbols,original_losses,original_winners,entry_b,entry_jf,local_delta_pp,median_local_delta_pp,r32_overlap_trades,r32_overlap_pct,status,reason
+close-cross-mid,413,37,9,19,18,19,18,-67.81979281174087,9.498921088961076,17,45.945945945945944,rejected,negative_local_delta
+close-cross-lower,233,21,9,15,6,12,9,-30.43184594765354,4.454236469565952,11,52.38095238095238,rejected,negative_local_delta
+ma5-cross-mid,230,27,9,16,11,16,11,5.611656800160276,9.167383532787065,16,59.25925925925926,rejected,weak_gain_with_material_winner_harm
+s-condition,69,7,6,0,7,6,1,-113.89980363850951,1.6830291194112519,0,0.0,rejected,insufficient_held_sample
+s-condition-union,147,12,8,1,11,9,3,-193.7039370523591,-9.933195391282146,1,8.333333333333334,rejected,winner_heavy
+nine2-sell,19,4,4,0,4,4,0,-37.083686755056625,-12.355394613575244,0,0.0,rejected,insufficient_held_sample
+nine2-up9,100,23,9,7,16,15,8,-90.50640810582293,8.112959942756294,7,30.434782608695652,rejected,winner_heavy
+chip-rollover,689,45,9,23,22,21,24,-284.61256508987105,3.2080640893387375,18,40.0,rejected,negative_local_delta
+chip-rollover-after85,280,16,8,3,13,11,5,-96.37654744465716,-8.159679855664992,5,31.25,rejected,winner_heavy
+macd-turn-down,1048,48,9,25,23,23,25,-326.3717926064352,3.3134655528955403,18,37.5,rejected,negative_local_delta
+upper-rejection-score,372,27,9,9,18,18,9,-270.1928177454948,-2.102780860176967,7,25.925925925925927,rejected,winner_heavy
+rsi-cross85,87,12,8,1,11,9,3,-192.67818005828042,-8.946062628655714,3,25.0,rejected,winner_heavy
+ma5-cross-mid-loss,16,16,9,12,4,12,4,41.34462748726243,9.63442807555624,15,93.75,rejected,near_synonym_of_rejected_r32

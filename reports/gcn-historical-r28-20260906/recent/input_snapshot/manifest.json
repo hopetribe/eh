@@ -1,0 +1,47 @@
+{
+  "research_version": "gcn-historical-r22",
+  "window": [
+    "recent",
+    "2025-08-27",
+    "2026-08-26"
+  ],
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "protocol_sha256": "4c4ccd61ce9940e439f47299038c51161c1186a13309aa38373881bdbd5bcd60",
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r22.py": "b6586ac5d0329ec017262c206a0b8f117935944979d4843052a6a8a1761be6c7",
+    "gcn/backtest/signal_research_r16.py": "0335380fcd3dff5ffae4ea5b513a56d2807bf2882f0282a39d6253317a89f8f6",
+    "gcn/backtest/signal_research_r14.py": "84ca7564d25e6bca20f98a0278eb207bf1af073de0251a4051e263bd24a09c1a",
+    "gcn/backtest/historical_research.py": "344dec1fac047753f86e5910cfccb13eeb2f9a3afe9baa52f1323c9d7bf4e2b9",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "e8cfb423fe6b5762d591f9269121cc64f80017cf7507c2c77e6b34fe715a4ab0",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "decision.json": "f924ebd2861810241ade7e54c1f91a2a3f479ac1a0978df8bcaa89a97834467e",
+    "paths.csv": "080847ef5bd00f7336bb73dad8f34c11865590eee30a4e67eea4bc750c9e646f",
+    "protocol.md": "4c4ccd61ce9940e439f47299038c51161c1186a13309aa38373881bdbd5bcd60",
+    "reconciliation.csv": "f86b0633a671f0a1828f7bc658d287c26f3ca9569924e8e3ffaad6c00628c1b9",
+    "summary.csv": "33ff1ed3c3fda0b41943219eae33d2c41ef4aa0a541c2b22c646012e132d1ce5",
+    "trades.csv": "14c8de4637770e4487d56a221d9ce2e4637b27f1e597eabfc139100a4bc1296b"
+  }
+}

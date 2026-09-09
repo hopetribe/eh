@@ -1,0 +1,22 @@
+{
+  "candidate": "B-entry-day-invalidation",
+  "candidate_triggers": 0,
+  "checked_b_entries": 9,
+  "control": "v5",
+  "equity_identical_by_induction": true,
+  "induction_basis": "same flat start and identical inputs",
+  "induction_step": "only candidate delta has zero triggers",
+  "orders_identical_by_induction": true,
+  "original_b_trades": 9,
+  "original_jf_trades": 8,
+  "original_trades": 17,
+  "positions_identical_by_induction": true,
+  "same_initial_state": true,
+  "transition_delta_absent": true,
+  "validation_material_improvement": false,
+  "window": [
+    "validation",
+    "2024-08-27",
+    "2025-08-26"
+  ]
+}

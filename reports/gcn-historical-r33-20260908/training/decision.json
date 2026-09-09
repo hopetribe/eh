@@ -1,0 +1,10 @@
+{
+  "candidate": null,
+  "candidate_backtest_run": false,
+  "production_changed": false,
+  "reason": "no_independent_s_exit_mechanism",
+  "research_version": "gcn-historical-r33",
+  "stage": "training_mechanism_screen",
+  "status": "no_candidate",
+  "validation_run": false
+}

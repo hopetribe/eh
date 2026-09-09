@@ -1,0 +1,36 @@
+{
+  "algorithm_sources": {
+    "gcn/backtest/historical_research.py": "30499ccc095fa22249561a66e275ba9494e47c15f10d8088bc162cca07739ea4",
+    "gcn/backtest/signal_research_r33.py": "900eeaec48019ad4c2391d7768dcb87808dba8da6222cff7d36ce11dcaf76b2a",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4"
+  },
+  "environment": {
+    "numpy": "2.4.4",
+    "pandas": "3.0.2",
+    "python": "3.11.14"
+  },
+  "outputs": {
+    "decision.json": "8a5baa81a8df098b203ff15a2a562a68beb223e9da60abc8d74de42020b5194e",
+    "events.csv": "f9726feb098de26fc6e2becef2de4813df73be02babde90b369667d79dccddc3",
+    "protocol.md": "c7c94e933aadc3a2f9c901b1ba81d4fc2fcb661fe6dff656aef64be56936425d",
+    "summary.csv": "366e1f886e9725f444502457a10cba8e6ce45b26d6b1e2473a6634e1eac07d73"
+  },
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "protocol_sha256": "c7c94e933aadc3a2f9c901b1ba81d4fc2fcb661fe6dff656aef64be56936425d",
+  "r32_input_outputs": {
+    "decision.json": "6d6728e652620c2195ffde48025240b20e55a81184299dcbf9e7afd93ee0a770",
+    "events.csv": "5db2dc344082e57204067e6487c2830c1ae7cee80c7d5e91255786186ae2bf35",
+    "missed_turns.csv": "3632b4bdabf8d78fc5d6d763544756172d68c19cb65a1658e55af3e3a953bd8e",
+    "protocol.md": "852a7397fa2b56914d0ed9003a9bd8c7b877eeb738400dab89160e597a0a4e6d",
+    "trades.csv": "b48dd2038ffffda1d8cd1ea0637e47950dfdd55e727b5e06064c71c24e83512f",
+    "training.csv": "9e6a3e09408ecd52445ff236e15beb86dc18d9eecbf6273d87b461473a0e0b4b"
+  },
+  "r32_training_manifest_sha256": "56c87d45a356301be01e319093cb0ca281e0dc523b14210d5a8e08500f17c96c",
+  "research_version": "gcn-historical-r33",
+  "stage": "training_mechanism_screen",
+  "window": [
+    "training",
+    "2021-08-27",
+    "2024-08-26"
+  ]
+}

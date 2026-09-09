@@ -1,0 +1,14 @@
+{
+  "candidate": "B-entry-day-invalidation",
+  "candidate_backtest_run": false,
+  "control": "v5",
+  "mdd_reduced_at_least_five_percent": false,
+  "net_win_rate_strictly_improved": false,
+  "production_changed": false,
+  "reason": "validation_no_material_improvement",
+  "research_version": "gcn-historical-r29",
+  "stage": "preflight_impossibility_certificate",
+  "status": "rejected",
+  "training_gate_evaluated": false,
+  "validation_gate_impossible_by_equivalence": true
+}

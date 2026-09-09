@@ -1,0 +1,40 @@
+{
+  "algorithm_sources": {
+    "gcn/backtest/historical_research.py": "30499ccc095fa22249561a66e275ba9494e47c15f10d8088bc162cca07739ea4",
+    "gcn/backtest/signal_research_r35.py": "1d62684d33da209f2a38f0c4babe1b1f4cce4c8ac9240cc114ae50cc10d8f7a5",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4"
+  },
+  "environment": {
+    "numpy": "2.4.4",
+    "pandas": "3.0.2",
+    "python": "3.11.14"
+  },
+  "feature_columns": [
+    "band_position",
+    "macd_level",
+    "macd_delta",
+    "rsi_center",
+    "chip_center"
+  ],
+  "outputs": {
+    "decision.json": "eec46c37bae20acd400ea0d419ee34c39b356473a0106fc0f26506b13871d66c",
+    "events.csv": "ea10b8930b81c8650bca02f2fce067fdeec7ee5ae38174647bef0a5e7c8e6ae9",
+    "expanding_time.csv": "f9174195cc065bd6dbbf0461dbeaeb659c9f03b1c61e245793026a0c41de3a00",
+    "in_sample.csv": "3cde783adda176e5ff941ff61776aea5f711234b13d36c9deed98e7fac8ff67a",
+    "leave_one_symbol.csv": "8cb3f264209eea13a406213c01c95cea027456fd98bc5ec05408328af211dbdc",
+    "metrics.csv": "57e03939f3cd252494cfedaaeaa7c78dc06444d9e56d0dba43f567f79efaf29f",
+    "model.json": "2cee7e300105593317ab253ef642e6218c815861ef7632d9d29328283fa8feac",
+    "protocol.md": "04cca422cedba4c74039cc7eb9d7bf80ca64091eb0ca5a10b91b469da9d579b9",
+    "tier_summary.csv": "d12d202b34e2c333feb9f6c9795dc39fa26d08b9789d9a9e17258e149d3e1d90"
+  },
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "protocol_sha256": "04cca422cedba4c74039cc7eb9d7bf80ca64091eb0ca5a10b91b469da9d579b9",
+  "research_version": "gcn-historical-r35",
+  "ridge_lambda": 8.0,
+  "stage": "training_confidence_screen",
+  "window": [
+    "training",
+    "2021-08-27",
+    "2024-08-26"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "candidate": null,
+  "failed_schemes": {
+    "expanding_time": "high_events,win_improvement,interference_reduction",
+    "in_sample": "symbols",
+    "leave_one_symbol": "win_improvement,interference_reduction"
+  },
+  "production_changed": false,
+  "quality_fields_implemented": false,
+  "reason": "training_cross_validation_failed",
+  "research_version": "gcn-historical-r35",
+  "stage": "training_confidence_screen",
+  "status": "no_candidate",
+  "training_passed": false,
+  "validation_run": false
+}

@@ -1,0 +1,48 @@
+{
+  "research_version": "gcn-historical-r32",
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "source_quality": {
+    "TQQQ": true,
+    "MSFT": false,
+    "NFLX": false,
+    "YINN": false,
+    "SNOW": true,
+    "TSLA": true,
+    "MRNA": false,
+    "NVDA": true,
+    "TEM": false,
+    "GOOGL": false,
+    "AAOI": true
+  },
+  "protocol_sha256": "852a7397fa2b56914d0ed9003a9bd8c7b877eeb738400dab89160e597a0a4e6d",
+  "algorithm_sources": {
+    "gcn/backtest/signal_research_r4.py": "1aa74c23f758b5e39f9eaa6e302bad52335281adc31538c057c3d5d0e8344719",
+    "gcn/backtest/signal_research_r3.py": "68a856940485cae65ea4f56712fbc72a6098b24d997ffbbb0e84e71644283342",
+    "gcn/backtest/signal_research_r2.py": "8cb1dd0e4c1ec10f7b047aef2339994e22909238a1809f13960ed5234cca6a8e",
+    "gcn/backtest/historical_research.py": "30499ccc095fa22249561a66e275ba9494e47c15f10d8088bc162cca07739ea4",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/engine.py": "1133f947c83db095788d9086557808023a97885867974e5dbc0a71d02b987ef5",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/backtest/signal_research_r17.py": "d57c90d588cd4894b0c9f1eaba096fdd4ab21c229f6ef506a47b542f3b206e26",
+    "gcn/backtest/signal_research_r32.py": "204bc47bd896fa22c549989535bda83df5faef374eaeb05ebcffad65346766c7"
+  },
+  "environment": {
+    "python": "3.11.14",
+    "numpy": "2.4.4",
+    "pandas": "3.0.2"
+  },
+  "outputs": {
+    "decision.json": "6d6728e652620c2195ffde48025240b20e55a81184299dcbf9e7afd93ee0a770",
+    "events.csv": "5db2dc344082e57204067e6487c2830c1ae7cee80c7d5e91255786186ae2bf35",
+    "missed_turns.csv": "3632b4bdabf8d78fc5d6d763544756172d68c19cb65a1658e55af3e3a953bd8e",
+    "protocol.md": "852a7397fa2b56914d0ed9003a9bd8c7b877eeb738400dab89160e597a0a4e6d",
+    "trades.csv": "b48dd2038ffffda1d8cd1ea0637e47950dfdd55e727b5e06064c71c24e83512f",
+    "training.csv": "9e6a3e09408ecd52445ff236e15beb86dc18d9eecbf6273d87b461473a0e0b4b"
+  },
+  "entry_macd_loss_col": "ENTRY_MACD_LOSS",
+  "macd_loss_reference_cost": 0.001,
+  "macd_loss_zero_threshold": 0.0,
+  "macd_loss_net_threshold": 1.0
+}
