@@ -18,6 +18,7 @@ import socket
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
@@ -55,6 +56,7 @@ INTERVALS = {
     "5m": ("K_5M", "5m", "60d"),
 }
 DEFAULT_COUNT = 2500
+YAHOO_CHART_HOSTS = ("query1.finance.yahoo.com", "query2.finance.yahoo.com")
 
 # ==========================================================================
 # K线本地落盘缓存: data/<SYMBOL>_<interval>.csv
@@ -436,12 +438,19 @@ def _fetch_futu(symbol: str, interval: str, count: int) -> pd.DataFrame:
 def _fetch_yahoo(symbol: str, interval: str, count: int) -> list:
     _, yiv, yrange = INTERVALS[interval]
     ysym = to_yahoo_symbol(symbol)
-    url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(ysym)}"
-           f"?range={yrange}&interval={yiv}&includePrePost=false")
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
-    with urllib.request.urlopen(req, timeout=12) as resp:
-        payload = json.loads(resp.read().decode("utf-8"))
+    payload = None
+    for host_index, host in enumerate(YAHOO_CHART_HOSTS):
+        url = (f"https://{host}/v8/finance/chart/{urllib.parse.quote(ysym)}"
+               f"?range={yrange}&interval={yiv}&includePrePost=false")
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"})
+        try:
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as exc:
+            if exc.code != 429 or host_index == len(YAHOO_CHART_HOSTS) - 1:
+                raise
     result = (payload.get("chart") or {}).get("result") or []
     if not result:
         err = (payload.get("chart") or {}).get("error") or {}

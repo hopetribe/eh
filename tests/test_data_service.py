@@ -243,6 +243,43 @@ def test_yahoo_daily_ohlc_is_adjusted_consistently():
     assert row[5] == 100.0
 
 
+def test_yahoo_uses_secondary_chart_endpoint_after_rate_limit():
+    """A 429 from one Yahoo host must not strand the UI on stale cache."""
+    import urllib.error
+    import gcn.data.service as svc
+
+    payload = {"chart": {"result": [{
+        "timestamp": [1767225600], "meta": {"gmtoffset": 0},
+        "indicators": {"quote": [{"open": [1], "high": [1], "low": [1],
+                                    "close": [1], "volume": [1]}]},
+    }]}}
+    requested_urls = []
+
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): return json.dumps(payload).encode()
+
+    def fake_urlopen(request, **kwargs):
+        requested_urls.append(request.full_url)
+        if len(requested_urls) == 1:
+            raise urllib.error.HTTPError(request.full_url, 429, "Too Many Requests",
+                                         hdrs=None, fp=None)
+        return Resp()
+
+    old = svc.urllib.request.urlopen
+    try:
+        svc.urllib.request.urlopen = fake_urlopen
+        rows = svc._fetch_yahoo("AAPL", "1d", 10)
+    finally:
+        svc.urllib.request.urlopen = old
+
+    assert rows[0][0] == "2026-01-01"
+    assert len(requested_urls) == 2
+    assert requested_urls[0].startswith("https://query1.finance.yahoo.com/")
+    assert requested_urls[1].startswith("https://query2.finance.yahoo.com/")
+
+
 def test_yahoo_intraday_timestamps_use_exchange_timezone_dst():
     import gcn.data.service as svc
     stamps = [int(pd.Timestamp("2026-01-02 14:30", tz="UTC").timestamp()),
