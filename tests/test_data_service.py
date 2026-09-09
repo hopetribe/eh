@@ -325,6 +325,52 @@ def test_online_failure_marks_cache_result_stale():
             old_dir, old_fresh, old_open, old_yahoo)
 
 
+def test_fetch_quote_uses_nasdaq_to_extend_adjusted_us_cache_when_yahoo_is_limited():
+    import tempfile
+    import gcn.data.service as svc
+
+    old_dir, old_fresh, old_open, old_yahoo = (
+        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo)
+    old_nasdaq = getattr(svc, "_fetch_nasdaq", None)
+    try:
+        svc.DATA_DIR = Path(tempfile.mkdtemp())
+        cached = pd.DataFrame({"open": [100], "high": [101], "low": [99],
+                               "close": [100], "volume": [1000]},
+                              index=pd.to_datetime(["2026-09-04"]))
+        cached.attrs.update(source="yahoo", adjustment="adjusted")
+        svc._save_cache("TSLA", "1d", cached)
+        svc._cache_is_fresh = lambda *a, **k: False
+        svc._opend_reachable = lambda *a, **k: False
+        svc._fetch_yahoo = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("HTTP Error 429: Too Many Requests"))
+
+        def fake_nasdaq(symbol, start):
+            assert symbol == "TSLA"
+            assert start <= pd.Timestamp("2026-09-04")
+            raw = pd.DataFrame({"open": [100, 101], "high": [101, 103],
+                                "low": [99, 100], "close": [100, 102],
+                                "volume": [1000, 2000]},
+                               index=pd.to_datetime(["2026-09-04", "2026-09-08"]))
+            raw.attrs.update(source="nasdaq", adjustment="unadjusted")
+            return raw
+
+        svc._fetch_nasdaq = fake_nasdaq
+        result = svc.fetch_quote("TSLA", "1d", count=100)
+
+        assert result["source"] == "nasdaq"
+        assert result["stale"] is False and result["refresh_failed"] is False
+        assert result["rows"][-1][0] == "2026-09-08"
+        assert svc._load_cache("TSLA", "1d").attrs == {
+            "source": "nasdaq", "adjustment": "adjusted"}
+    finally:
+        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo = (
+            old_dir, old_fresh, old_open, old_yahoo)
+        if old_nasdaq is None:
+            del svc._fetch_nasdaq
+        else:
+            svc._fetch_nasdaq = old_nasdaq
+
+
 def test_fetch_quote_rejects_unknown_interval():
     import gcn.data.service as svc
     try:

@@ -57,6 +57,7 @@ INTERVALS = {
 }
 DEFAULT_COUNT = 2500
 YAHOO_CHART_HOSTS = ("query1.finance.yahoo.com", "query2.finance.yahoo.com")
+NASDAQ_HISTORICAL_URL = "https://api.nasdaq.com/api/quote/{symbol}/historical"
 
 # ==========================================================================
 # K线本地落盘缓存: data/<SYMBOL>_<interval>.csv
@@ -498,6 +499,62 @@ def _fetch_yahoo(symbol: str, interval: str, count: int) -> list:
     return rows
 
 
+def _fetch_nasdaq(symbol: str, start: pd.Timestamp) -> pd.DataFrame:
+    """Fetch recent US daily bars from Nasdaq when Yahoo is unavailable."""
+    if to_futu_symbol(symbol).split(".", 1)[0] != "US":
+        raise ValueError("Nasdaq 回退仅支持美股")
+    start = pd.Timestamp(start).normalize()
+    query = urllib.parse.urlencode({
+        "assetclass": "stocks", "fromdate": start.strftime("%Y-%m-%d"),
+        "limit": 100,
+    })
+    url = NASDAQ_HISTORICAL_URL.format(symbol=urllib.parse.quote(_normalize_symbol(symbol)))
+    req = urllib.request.Request(f"{url}?{query}", headers={
+        "Accept": "application/json", "User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=12) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    rows = (((payload.get("data") or {}).get("tradesTable") or {}).get("rows") or [])
+    records = []
+    for row in rows:
+        try:
+            date = pd.to_datetime(row["date"], format="%m/%d/%Y", errors="raise")
+            values = [float(str(row[key]).replace("$", "").replace(",", ""))
+                      for key in ("open", "high", "low", "close", "volume")]
+        except (KeyError, TypeError, ValueError):
+            continue
+        records.append((date, *values))
+    if not records:
+        raise RuntimeError(f"Nasdaq 无 {symbol} 有效日K")
+    out = pd.DataFrame([record[1:] for record in records],
+                       columns=["open", "high", "low", "close", "volume"],
+                       index=pd.DatetimeIndex([record[0] for record in records]))
+    out.attrs.update(source="nasdaq", adjustment="unadjusted")
+    out = _sanitize_ohlcv(out)
+    if out.empty:
+        raise RuntimeError(f"Nasdaq 无 {symbol} 有效日K")
+    return out
+
+
+def _align_nasdaq_to_cache(cached: pd.DataFrame, fresh: pd.DataFrame) -> pd.DataFrame:
+    """Scale a short Nasdaq tail onto the cache's adjusted price basis."""
+    if cached.attrs.get("adjustment") != "adjusted":
+        raise RuntimeError("本地缓存缺少复权口径，不能合并 Nasdaq 日K")
+    overlap = cached.index.intersection(fresh.index)
+    if overlap.empty:
+        raise RuntimeError("Nasdaq 日K与本地缓存没有重叠交易日")
+    anchor = overlap.max()
+    cached_close = float(cached.at[anchor, "close"])
+    fresh_close = float(fresh.at[anchor, "close"])
+    factor = cached_close / fresh_close if fresh_close else float("nan")
+    if not np.isfinite(factor) or factor <= 0:
+        raise RuntimeError("Nasdaq 日K复权对齐失败")
+    out = fresh.copy()
+    price_columns = ["open", "high", "low", "close"]
+    out[price_columns] = out[price_columns].astype(float) * factor
+    out.attrs.update(source="nasdaq", adjustment="adjusted")
+    return _sanitize_ohlcv(out)
+
+
 def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT,
                 use_cache: bool = True, force: bool = False) -> dict:
     """抓取K线: 本地缓存优先 (陈旧才在线更新), Futu 优先, 失败自动回退 Yahoo。
@@ -557,8 +614,26 @@ def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT,
                 merged = _merge_market_data(merged, df)
                 source = "yahoo"
             except Exception as exc:  # noqa: BLE001
+                if (merged is not None and not merged.empty and interval == "1d"
+                        and to_futu_symbol(symbol).startswith("US.")):
+                    try:
+                        start = pd.Timestamp(merged.index.max()).normalize() - pd.Timedelta(days=14)
+                        df = _align_nasdaq_to_cache(merged, _fetch_nasdaq(symbol, start))
+                        merged = _merge_market_data(merged, df)
+                        source = "nasdaq"
+                        notes.append(f"Yahoo({exc})，改用 Nasdaq")
+                    except Exception as nasdaq_exc:  # noqa: BLE001
+                        notes.append(f"Yahoo({exc}); Nasdaq({nasdaq_exc})")
                 if merged is not None and not merged.empty:
-                    notes.append(f"在线更新失败({exc}), 使用本地缓存")
+                    if source is None:
+                        notes.append(f"在线更新失败({exc}), 使用本地缓存")
+                    else:
+                        _save_cache(symbol, interval, merged)
+                        out_rows = _rows_from_df(merged)
+                        return {"rows": out_rows[-count:], "source": source,
+                                "symbol": sym_used, "interval": interval,
+                                "note": "; ".join(notes), "stale": False,
+                                "refresh_failed": False}
                     out_rows = _rows_from_df(merged)
                     return {"rows": out_rows[-count:], "source": "cache",
                             "symbol": sym_used, "interval": interval,
