@@ -204,6 +204,7 @@ def test_webui_data_source_identity_is_committed_atomically():
     assert "if (!state.data) return" in script
     assert "hadCommittedSource" in script
     assert "const restored = await recompute(expectedEpoch)" in script
+    assert 'tradingview: "TradingView"' in script
 
     compute_fetch = script.index('fetch("/api/compute"')
     compute_validation = script.index("validateComputePayload(data)", compute_fetch)

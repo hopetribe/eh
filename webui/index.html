@@ -944,7 +944,7 @@ async function recompute(expectedEpoch = dataSourceEpoch) {
   }
 }
 
-/* ---------- 行情获取: Futu OpenD 优先, 服务端自动回退 Yahoo ---------- */
+/* ---------- 行情获取: TradingView 优先, 服务端自动回退 Yahoo ---------- */
 async function loadQuote() {
   const symbol = $("#symbol").value.trim().toUpperCase();
   if (!symbol) { toast("请输入股票代码"); return; }
@@ -986,7 +986,7 @@ async function loadQuote() {
       rows,
       symbol: responseSymbol,
       dataInterval: interval,
-      quoteSrcName: { futu: "Futu OpenD", yahoo: "Yahoo Finance",
+      quoteSrcName: { futu: "Futu OpenD", tradingview: "TradingView", yahoo: "Yahoo Finance",
                       cache: "本地缓存" }[responseSource] || responseSource,
       quoteNote: responseNote,
       csvName: "",

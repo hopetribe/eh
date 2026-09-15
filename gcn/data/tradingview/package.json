@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "name": "kk2-tradingview-adapter",
+  "version": "0.1.0",
+  "description": "Local TradingView OHLCV adapter for KK2",
+  "engines": {
+    "node": ">=14"
+  },
+  "dependencies": {
+    "@mathieuc/tradingview": "3.5.2"
+  }
+}

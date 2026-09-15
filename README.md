@@ -60,7 +60,7 @@ python3 tests/run_all.py        # 全部离线测试
 gcn/
   core/         TDX 算子库 (MA/EMA/SMA/STDP/CROSS/BARSLAST…, 向量化实现) + 指标库
   recipes/      gcn_main.py — EHOPT10 配方 (v3/v4/v4-exp/v5 中间变量与信号)
-  data/         数据服务: FutuOpenD→Yahoo 自动回退, 落盘缓存, 新鲜度判定, 每标的并发锁
+  data/         数据服务: TradingView→Yahoo 自动回退，落盘缓存/新鲜度/每标的并发锁
   server/       纯标准库 HTTP 服务 (ThreadingHTTPServer) + JSON API
   backtest/     回测引擎: 信号预设组合, 资金曲线, 事件研究, 分段一致性
   screener/     基本面选股: 策略定义 / 财报指标计算 / 条件求值引擎
@@ -76,9 +76,20 @@ docs/           选股策略条件清单 (策略图卡的结构化转写)
 
 ## 数据层
 
-**数据源**: 本机 FutuOpenD (`127.0.0.1:11111`) 优先, 未运行或失败自动回退 Yahoo Finance。
-Futu 按合法分页键拉取完整时间窗；两端 OHLC 均统一为复权口径并记录来源元数据，只有复权口径兼容
-时才合并，随后过滤非有限/非法 bar、去重、按时间排序后落盘。
+**默认数据源**: TradingView 优先、Yahoo Finance 后备。安装本地锁定的 Node 适配器后，所有需要在线刷新的行情请求都会
+先请求 TradingView；界面会显示实际来源并在回退时保留失败原因。TradingView 返回的 K 线标记为 `split-adjusted`，不会和
+Yahoo 的 `adjusted` 缓存混合。
+
+```bash
+npm --prefix gcn/data/tradingview ci --ignore-scripts
+python3 kk2_ehopt10_ui.py
+```
+
+如果服务的 `PATH` 不包含 Node（例如使用 nvm 的 systemd 服务），可在 `.env` 中设置
+`TRADINGVIEW_NODE_BINARY=/绝对路径/node`。
+
+适配器需要能连接 `symbol-search.tradingview.com` 及 `wss://data.tradingview.com`；日内周期可能需要 TradingView 账户权限。
+该接口依赖非官方会话协议，且 TradingView 的数据使用条款可能限制自动化、非展示用途，使用前须自行确认授权与合规性。
 
 **落盘缓存** (`data/` 目录, 已纳入版本库, 预置三大市场数据):
 
@@ -94,7 +105,7 @@ Futu 按合法分页键拉取完整时间窗；两端 OHLC 均统一为复权口
 缓存最后一根日K覆盖该日才算新鲜；不再把文件 mtime 当作行情更新证据。请求历史长度大于缓存长度时
 也会补拉。周线要求覆盖当前已完成交易周；日内周期 (60m/15m/5m) 始终刷新。
 
-**并发安全**: Futu/Yahoo/裸代码别名归一到同一安全缓存键；同一标的的
+**并发安全**: 数据源与裸代码别名归一到同一安全缓存键；同一标的的
 读缓存→在线合并→落盘临界区同时使用进程内锁和跨进程文件锁，CSV/元数据/雷达 JSON 均以临时文件
 原子替换。雷达扫描、预热守护、主图加载和 CLI 并行访问不会产生半文件或互相覆盖合并历史。
 

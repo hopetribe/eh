@@ -111,11 +111,65 @@ def test_symbol_lock_identity():
     assert _symbol_lock("AAPL") is not _symbol_lock("MSFT")
 
 
+def test_tradingview_is_the_default_primary_source():
+    import gcn.data.service as svc
+
+    assert svc.PRIMARY_MARKET_SOURCE == "tradingview"
+
+
+def test_tradingview_uses_configured_node_binary():
+    import os
+    import gcn.data.service as svc
+
+    old = os.environ.get("TRADINGVIEW_NODE_BINARY")
+    try:
+        os.environ["TRADINGVIEW_NODE_BINARY"] = "/opt/node/bin/node"
+        assert svc._tradingview_node_binary() == "/opt/node/bin/node"
+    finally:
+        if old is None:
+            del os.environ["TRADINGVIEW_NODE_BINARY"]
+        else:
+            os.environ["TRADINGVIEW_NODE_BINARY"] = old
+
+
+def test_fetch_quote_prioritizes_tradingview_before_yahoo():
+    import tempfile
+    import gcn.data.service as svc
+
+    old_dir = svc.DATA_DIR
+    old_tv = getattr(svc, "_fetch_tradingview", None)
+    old_yahoo = svc._fetch_yahoo
+    try:
+        svc.DATA_DIR = Path(tempfile.mkdtemp())
+        frame = pd.DataFrame({"open": [10.0], "high": [11.0], "low": [9.0],
+                              "close": [10.5], "volume": [1000.0]},
+                             index=pd.to_datetime(["2026-09-14"]))
+        frame.attrs.update(source="tradingview", adjustment="split-adjusted", market="NASDAQ:AAPL")
+        svc._fetch_tradingview = lambda *args: frame
+        svc._fetch_yahoo = lambda *args: (_ for _ in ()).throw(
+            AssertionError("TradingView 成功时不应请求 Yahoo"))
+
+        result = svc.fetch_quote("AAPL", "1d", count=100)
+
+        assert result["source"] == "tradingview"
+        assert result["note"] == "TradingView(NASDAQ:AAPL)"
+        assert result["rows"][-1] == ["2026-09-14", 10.0, 11.0, 9.0, 10.5, 1000.0]
+        assert svc._load_cache("AAPL", "1d").attrs == {
+            "source": "tradingview", "adjustment": "split-adjusted"}
+    finally:
+        svc.DATA_DIR, svc._fetch_yahoo = old_dir, old_yahoo
+        if old_tv is None:
+            del svc._fetch_tradingview
+        else:
+            svc._fetch_tradingview = old_tv
+
+
 def test_fetch_quote_refreshes_fresh_but_short_cache():
     import tempfile
     import gcn.data.service as svc
-    old_dir, old_fresh, old_open, old_yahoo = (
-        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo)
+    old_dir, old_fresh, old_open, old_tv, old_yahoo = (
+        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable,
+        svc._fetch_tradingview, svc._fetch_yahoo)
     calls = {"n": 0}
     try:
         svc.DATA_DIR = Path(tempfile.mkdtemp())
@@ -125,6 +179,8 @@ def test_fetch_quote_refreshes_fresh_but_short_cache():
         svc._save_cache("AAPL", "1d", df)
         svc._cache_is_fresh = lambda *a, **k: True
         svc._opend_reachable = lambda *a, **k: False
+        svc._fetch_tradingview = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("TradingView 离线"))
         def fake_yahoo(symbol, interval, count):
             calls["n"] += 1
             dates = pd.bdate_range("2025-01-01", periods=count)
@@ -135,15 +191,17 @@ def test_fetch_quote_refreshes_fresh_but_short_cache():
         assert svc._load_cache("AAPL", "1d").attrs == {
             "source": "yahoo", "adjustment": "adjusted"}
     finally:
-        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo = (
-            old_dir, old_fresh, old_open, old_yahoo)
+        (svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable,
+         svc._fetch_tradingview, svc._fetch_yahoo) = (
+            old_dir, old_fresh, old_open, old_tv, old_yahoo)
 
 
 def test_fetch_quote_force_bypasses_fresh_full_cache():
     import tempfile
     import gcn.data.service as svc
-    old_dir, old_fresh, old_open, old_yahoo = (
-        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo)
+    old_dir, old_fresh, old_open, old_tv, old_yahoo = (
+        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable,
+        svc._fetch_tradingview, svc._fetch_yahoo)
     calls = {"n": 0}
     try:
         svc.DATA_DIR = Path(tempfile.mkdtemp())
@@ -153,6 +211,8 @@ def test_fetch_quote_force_bypasses_fresh_full_cache():
         svc._save_cache("AAPL", "1d", frame)
         svc._cache_is_fresh = lambda *a, **k: True
         svc._opend_reachable = lambda *a, **k: False
+        svc._fetch_tradingview = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("TradingView 离线"))
         def online(*args):
             calls["n"] += 1
             return [[d.strftime("%Y-%m-%d"), 1, 1, 1, 1, 1] for d in idx]
@@ -160,8 +220,9 @@ def test_fetch_quote_force_bypasses_fresh_full_cache():
         result = svc.fetch_quote("AAPL", "1d", count=100, force=True)
         assert calls["n"] == 1 and result["refresh_failed"] is False
     finally:
-        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo = (
-            old_dir, old_fresh, old_open, old_yahoo)
+        (svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable,
+         svc._fetch_tradingview, svc._fetch_yahoo) = (
+            old_dir, old_fresh, old_open, old_tv, old_yahoo)
 
 
 def test_futu_history_uses_supported_paginated_contract():
@@ -306,8 +367,9 @@ def test_yahoo_intraday_timestamps_use_exchange_timezone_dst():
 def test_online_failure_marks_cache_result_stale():
     import tempfile
     import gcn.data.service as svc
-    old_dir, old_fresh, old_open, old_yahoo = (
-        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo)
+    old_dir, old_fresh, old_open, old_tv, old_yahoo = (
+        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable,
+        svc._fetch_tradingview, svc._fetch_yahoo)
     try:
         svc.DATA_DIR = Path(tempfile.mkdtemp())
         frame = pd.DataFrame({"open": [1], "high": [1], "low": [1],
@@ -316,21 +378,25 @@ def test_online_failure_marks_cache_result_stale():
         svc._save_cache("AAPL", "1d", frame)
         svc._cache_is_fresh = lambda *a, **k: False
         svc._opend_reachable = lambda *a, **k: False
+        svc._fetch_tradingview = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("TradingView 离线"))
         svc._fetch_yahoo = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("offline"))
         result = svc.fetch_quote("AAPL", "1d", count=100)
         assert result["source"] == "cache"
         assert result["stale"] is True and result["refresh_failed"] is True
     finally:
-        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo = (
-            old_dir, old_fresh, old_open, old_yahoo)
+        (svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable,
+         svc._fetch_tradingview, svc._fetch_yahoo) = (
+            old_dir, old_fresh, old_open, old_tv, old_yahoo)
 
 
 def test_fetch_quote_uses_nasdaq_to_extend_adjusted_us_cache_when_yahoo_is_limited():
     import tempfile
     import gcn.data.service as svc
 
-    old_dir, old_fresh, old_open, old_yahoo = (
-        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo)
+    old_dir, old_fresh, old_open, old_tv, old_yahoo = (
+        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable,
+        svc._fetch_tradingview, svc._fetch_yahoo)
     old_nasdaq = getattr(svc, "_fetch_nasdaq", None)
     try:
         svc.DATA_DIR = Path(tempfile.mkdtemp())
@@ -341,6 +407,8 @@ def test_fetch_quote_uses_nasdaq_to_extend_adjusted_us_cache_when_yahoo_is_limit
         svc._save_cache("TSLA", "1d", cached)
         svc._cache_is_fresh = lambda *a, **k: False
         svc._opend_reachable = lambda *a, **k: False
+        svc._fetch_tradingview = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("TradingView 离线"))
         svc._fetch_yahoo = lambda *a, **k: (_ for _ in ()).throw(
             RuntimeError("HTTP Error 429: Too Many Requests"))
 
@@ -363,8 +431,9 @@ def test_fetch_quote_uses_nasdaq_to_extend_adjusted_us_cache_when_yahoo_is_limit
         assert svc._load_cache("TSLA", "1d").attrs == {
             "source": "nasdaq", "adjustment": "adjusted"}
     finally:
-        svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable, svc._fetch_yahoo = (
-            old_dir, old_fresh, old_open, old_yahoo)
+        (svc.DATA_DIR, svc._cache_is_fresh, svc._opend_reachable,
+         svc._fetch_tradingview, svc._fetch_yahoo) = (
+            old_dir, old_fresh, old_open, old_tv, old_yahoo)
         if old_nasdaq is None:
             del svc._fetch_nasdaq
         else:

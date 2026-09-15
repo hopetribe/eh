@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""GCN 数据服务: 多数据源 (Futu->Yahoo 回退) + 本地落盘缓存 + 每日自动刷新。
+"""GCN 数据服务: TradingView->Yahoo 回退 + 本地落盘缓存 + 每日自动刷新。
 
 稳定性设计
 ----------
@@ -14,7 +14,9 @@ import io
 import json
 import os
 import re
+import shutil
 import socket
+import subprocess
 import tempfile
 import threading
 import time
@@ -44,7 +46,7 @@ CSV_ALIASES = {
 }
 
 # ==========================================================================
-# 行情数据源: Futu OpenAPI (本机 FutuOpenD) 优先, 自动回退 Yahoo Finance
+# 行情数据源: TradingView 优先, 自动回退 Yahoo Finance
 # ==========================================================================
 
 # interval: (Futu KLType 名, Yahoo interval, Yahoo range)
@@ -56,8 +58,16 @@ INTERVALS = {
     "5m": ("K_5M", "5m", "60d"),
 }
 DEFAULT_COUNT = 2500
+PRIMARY_MARKET_SOURCE = "tradingview"
 YAHOO_CHART_HOSTS = ("query1.finance.yahoo.com", "query2.finance.yahoo.com")
 NASDAQ_HISTORICAL_URL = "https://api.nasdaq.com/api/quote/{symbol}/historical"
+TRADINGVIEW_DIR = Path(__file__).resolve().with_name("tradingview")
+TRADINGVIEW_FETCH_SCRIPT = TRADINGVIEW_DIR / "fetch.js"
+
+
+def _tradingview_node_binary() -> str | None:
+    """Return an explicitly configured Node binary, or the system default."""
+    return os.environ.get("TRADINGVIEW_NODE_BINARY") or shutil.which("node")
 
 # ==========================================================================
 # K线本地落盘缓存: data/<SYMBOL>_<interval>.csv
@@ -499,6 +509,58 @@ def _fetch_yahoo(symbol: str, interval: str, count: int) -> list:
     return rows
 
 
+def _fetch_tradingview(symbol: str, interval: str, count: int) -> pd.DataFrame:
+    """Fetch OHLCV through the local Node-based TradingView experiment.
+
+    TradingView chart sessions use split-adjusted prices, which must never be
+    merged with the project's dividend-adjusted Yahoo/Futu series.
+    """
+    if not TRADINGVIEW_FETCH_SCRIPT.is_file():
+        raise RuntimeError("TradingView 适配器缺失")
+    node = _tradingview_node_binary()
+    if not node:
+        raise RuntimeError("未安装 Node.js，无法运行 TradingView 适配器")
+    try:
+        completed = subprocess.run(
+            [node, str(TRADINGVIEW_FETCH_SCRIPT), _normalize_symbol(symbol), interval, str(count)],
+            cwd=TRADINGVIEW_DIR, capture_output=True, text=True, timeout=20, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("TradingView 请求超时") from exc
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout).strip().replace("\n", " ")
+        raise RuntimeError(f"TradingView 适配器失败: {detail[-500:] or completed.returncode}")
+    try:
+        payload = json.loads(completed.stdout)
+        raw_periods = payload["periods"]
+    except (TypeError, ValueError, KeyError) as exc:
+        raise RuntimeError("TradingView 适配器返回无效 JSON") from exc
+    try:
+        exchange_zone = ZoneInfo(str(payload.get("timezone") or "UTC"))
+    except (KeyError, ValueError):
+        exchange_zone = ZoneInfo("UTC")
+
+    records = []
+    for row in raw_periods:
+        try:
+            timestamp, o, h, l, c, v = row
+            utc_dt = datetime.fromtimestamp(float(timestamp), tz=timezone.utc)
+            local_dt = utc_dt.astimezone(exchange_zone).replace(tzinfo=None)
+            records.append((local_dt, float(o), float(h), float(l), float(c), float(v)))
+        except (TypeError, ValueError, OSError, OverflowError):
+            continue
+    if not records:
+        raise RuntimeError("TradingView 未返回有效 OHLCV")
+    out = pd.DataFrame([record[1:] for record in records],
+                       columns=["open", "high", "low", "close", "volume"],
+                       index=pd.DatetimeIndex([record[0] for record in records]))
+    out.attrs.update(source="tradingview", adjustment="split-adjusted",
+                     market=str(payload.get("market") or ""))
+    out = _sanitize_ohlcv(out)
+    if out.empty:
+        raise RuntimeError("TradingView 未返回有效 OHLCV")
+    return out
+
+
 def _fetch_nasdaq(symbol: str, start: pd.Timestamp) -> pd.DataFrame:
     """Fetch recent US daily bars from Nasdaq when Yahoo is unavailable."""
     if to_futu_symbol(symbol).split(".", 1)[0] != "US":
@@ -557,10 +619,10 @@ def _align_nasdaq_to_cache(cached: pd.DataFrame, fresh: pd.DataFrame) -> pd.Data
 
 def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT,
                 use_cache: bool = True, force: bool = False) -> dict:
-    """抓取K线: 本地缓存优先 (陈旧才在线更新), Futu 优先, 失败自动回退 Yahoo。
+    """抓取K线: 本地缓存优先，在线刷新顺序为 TradingView→Yahoo。
 
     force=True 时无条件在线刷新 (供显式手动预热使用)。
-    返回 {rows, source, symbol, interval, note}; source 可为 cache/futu/yahoo。
+    返回 {rows, source, symbol, interval, note}; source 可为 cache/futu/yahoo/tradingview。
     同一标的的 读缓存-合并-落盘 临界区按 symbol 加锁, 避免雷达扫描/预热/
     自动刷新多线程并发更新同一 CSV 时互相覆盖丢数据; 锁内二次检查新鲜度,
     已被其他线程抢先刷新的线程直接走缓存。
@@ -587,22 +649,15 @@ def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT,
                     "refresh_failed": False}
 
         merged = cached
+        source, sym_used = None, to_yahoo_symbol(symbol)
         try:
-            import futu  # noqa: F401 - 检测 futu-api 是否安装
-            futu_ready = _opend_reachable()
-        except ImportError:
-            futu_ready = False
-
-        if futu_ready:
-            try:
-                df = _fetch_futu(symbol, interval, count)
-                merged = _merge_market_data(merged, df)
-                source, sym_used = "futu", to_futu_symbol(symbol)
-            except Exception as exc:  # noqa: BLE001
-                notes.append(f"Futu({exc})")
-                source, sym_used = None, to_yahoo_symbol(symbol)
-        else:
-            source, sym_used = None, to_yahoo_symbol(symbol)
+            df = _fetch_tradingview(symbol, interval, count)
+            merged = _merge_market_data(merged, df)
+            source = PRIMARY_MARKET_SOURCE
+            if df.attrs.get("market"):
+                notes.append(f"TradingView({df.attrs['market']})")
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"TradingView({exc})")
 
         if source is None:
             try:
