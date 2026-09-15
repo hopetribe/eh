@@ -333,7 +333,7 @@
         <div class="legend-group"><span class="legend-label">行情</span><button class="legend-btn" data-series="K线"><i class="legend-candle"></i>K 线</button></div>
         <div class="legend-group"><span class="legend-label">布林</span><button class="legend-btn" data-series="布林MID"><i style="--legend-color:#f0a6c2"></i>MID</button><button class="legend-btn" data-series="布林UPPER"><i style="--legend-color:#eabf45"></i>UPPER</button><button class="legend-btn" data-series="布林LOWER"><i style="--legend-color:#38bdf8"></i>LOWER</button></div>
         <div class="legend-group"><span class="legend-label">信号</span><button class="legend-btn" data-series="S卖"><i class="legend-dot sell"></i>S卖</button><button class="legend-btn" data-series="S条件"><i class="legend-ring"></i>S条件</button><button class="legend-btn" data-series="B买Setup"><i style="--legend-color:#60a5fa"></i>Setup</button><button class="legend-btn" data-series="B买"><i class="legend-dot buy"></i>B买</button><button class="legend-btn" data-series="绝反"><i class="legend-dot reverse"></i>绝反</button><button class="legend-btn" data-series="九转标注"><i style="--legend-color:#d946ef"></i>九转</button><button class="legend-btn" data-series="定位"><i style="--legend-color:#4f8df7"></i>定位</button></div>
-        <div class="legend-group"><span class="legend-label">缠论</span><button class="legend-btn" data-series="缠论笔"><i style="--legend-color:#a78bfa"></i>笔</button><button class="legend-btn" data-series="缠论段"><i style="--legend-color:#fb923c"></i>段</button><button class="legend-btn" data-series="缠论中枢"><i style="--legend-color:#c084fc"></i>中枢</button></div>
+        <div class="legend-group"><span class="legend-label">缠论</span><button class="legend-btn" data-series="缠论笔"><i style="--legend-color:#a78bfa"></i>笔</button><button class="legend-btn" data-series="缠论段"><i style="--legend-color:#fb923c"></i>段</button><button class="legend-btn" data-series="缠论中枢"><i style="--legend-color:#c084fc"></i>中枢</button><button class="legend-btn" data-series="缠买"><i class="legend-dot buy"></i>缠买</button><button class="legend-btn" data-series="缠卖"><i class="legend-dot sell"></i>缠卖</button></div>
         <div class="legend-group"><span class="legend-label">副图</span><button class="legend-btn" data-series="成交量"><i class="legend-bars"></i>成交量</button><button class="legend-btn" data-series="获利筹"><i style="--legend-color:#38bdf8"></i>获利筹</button><button class="legend-btn" data-series="V3"><i style="--legend-color:#f59e0b"></i>V3</button><button class="legend-btn" data-series="MACD"><i class="legend-bars"></i>MACD</button><button class="legend-btn" data-series="DIF"><i style="--legend-color:#f59e0b"></i>DIF</button><button class="legend-btn" data-series="DEA"><i style="--legend-color:#facc15"></i>DEA</button></div>
       </div>
     </nav>
@@ -691,6 +691,13 @@ function validateChanlunPayload(data, expectedBars) {
         !validIndex(center.end_index) || center.start_index >= center.end_index ||
         !validPrice(center.low) || !validPrice(center.high) || center.low > center.high) {
       throw new Error("缠论中枢数据无效");
+    }
+  }
+  for (const point of data.buy_sell_points) {
+    const expectedLabel = point?.side === "buy" ? "缠买" : point?.side === "sell" ? "缠卖" : null;
+    if (!point || typeof point !== "object" || !validIndex(point.index) || !validPrice(point.price) ||
+        !expectedLabel || point.label !== expectedLabel || point.rule !== "completed_stroke_endpoint") {
+      throw new Error("缠论买卖点数据无效");
     }
   }
   return data;
@@ -1300,6 +1307,26 @@ function renderChart(d) {
   }];
   const chanStrokeSeries = chanLines(chanlun?.strokes, "缠论笔", "#a78bfa", 1.2, 8);
   const chanSegmentSeries = chanLines(chanlun?.segments, "缠论段", "#fb923c", 2.2, 9);
+  const chanPointData = (side) => (chanlun?.buy_sell_points || [])
+    .filter((point) => point.side === side).map((point) => [point.index, point.price]);
+  const chanBuySeries = [{
+    name: "缠买", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
+    symbol: "triangle", symbolSize: 13, z: 15,
+    data: chanPointData("buy"),
+    itemStyle: { color: "#ef4444", borderColor: "#fee2e2", borderWidth: 1 },
+    label: { show: true, formatter: "缠买", position: "bottom", distance: 4,
+             color: "#fda4af", fontSize: 10, fontWeight: "bold" },
+    emphasis: { scale: 1.2 },
+  }];
+  const chanSellSeries = [{
+    name: "缠卖", type: "scatter", xAxisIndex: 0, yAxisIndex: 0,
+    symbol: "triangle", symbolRotate: 180, symbolSize: 13, z: 15,
+    data: chanPointData("sell"),
+    itemStyle: { color: "#22c55e", borderColor: "#dcfce7", borderWidth: 1 },
+    label: { show: true, formatter: "缠卖", position: "top", distance: 4,
+             color: "#86efac", fontSize: 10, fontWeight: "bold" },
+    emphasis: { scale: 1.2 },
+  }];
 
   const option = {
     animation: false,
@@ -1343,7 +1370,7 @@ function renderChart(d) {
       selectedMode: true,
       selected: state.legendSelected,
       data: ["K线", "布林MID", "布林UPPER", "布林LOWER", "九转标注", "S卖", "S条件",
-        "B买Setup", "B买", "绝反", "定位", "缠论笔", "缠论段", "缠论中枢",
+        "B买Setup", "B买", "绝反", "定位", "缠论笔", "缠论段", "缠论中枢", "缠买", "缠卖",
         "成交量", "获利筹", "V3", "MACD", "DIF", "DEA"],
     },
     grid: [
@@ -1413,6 +1440,8 @@ function renderChart(d) {
       ...chanCenterSeries,
       ...chanStrokeSeries,
       ...chanSegmentSeries,
+      ...chanBuySeries,
+      ...chanSellSeries,
       { name: "九转标注", ...nineLabelSeries, xAxisIndex: 0, yAxisIndex: 0,
         data: labelPts(d.upLabel, (i) => d.high[i]),
         label: mkLabel("top", "#d946ef") },

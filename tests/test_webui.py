@@ -232,6 +232,17 @@ def test_webui_loads_chanlun_overlays_for_the_committed_ohlcv_data():
     assert 'name: "缠论中枢"' in script
 
 
+def test_webui_renders_validated_chan_buy_and_sell_markers():
+    script = _inline_script()
+    assert 'point.rule !== "completed_stroke_endpoint"' in script
+    assert 'data-series="缠买"' in INDEX
+    assert 'data-series="缠卖"' in INDEX
+    assert 'name: "缠买"' in script
+    assert 'name: "缠卖"' in script
+    assert 'label: { show: true, formatter: "缠买"' in script
+    assert 'label: { show: true, formatter: "缠卖"' in script
+
+
 def test_webui_dialogs_and_report_state_are_accessible_and_atomic():
     script = _inline_script()
     for panel, title in (("scrPanel", "scrDialogTitle"),

@@ -213,7 +213,8 @@ def test_server_returns_chanlun_structure_for_client_rows():
     assert data["provider"] == "chanlun.py"
     assert data["summary"]["bars"] == len(rows)
     assert data["summary"]["strokes"] > 0
-    assert data["buy_sell_points"] == []
+    assert len(data["buy_sell_points"]) == data["summary"]["strokes"]
+    assert {point["label"] for point in data["buy_sell_points"]} == {"缠买", "缠卖"}
 
 
 def test_server_parses_comma_markets_and_enforces_symbol_limit():
