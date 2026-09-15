@@ -1,0 +1,14 @@
+{
+  "all_input_sources_trusted": false,
+  "evidence": "exploratory_historical_walk_forward_not_untouched_or_prospective",
+  "hypotheses": 18,
+  "production_changed": false,
+  "protocol_sha256": "50f8a75c982032a3a3d47b01d360bc936140a070d6006944cb9d36719e4ce76d",
+  "research_version": "r36",
+  "selected_by_signal": {
+    "b": null,
+    "jf": null,
+    "s": null
+  },
+  "status": "no_candidate"
+}

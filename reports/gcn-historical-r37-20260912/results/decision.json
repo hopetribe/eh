@@ -1,0 +1,15 @@
+{
+  "evidence": "exploratory_historical_algorithm_development_not_independent_validation",
+  "half_life_days": 730,
+  "new_hypotheses": 3,
+  "parent_manifest_sha256": "dce812be846291d74a1bb7dcf651749460f6cce22e57a01a0c4909c1a0efc79b",
+  "production_changed": false,
+  "protocol_sha256": "ff7c0ad2d1d14760c23447a97d771b9e626ae75abb0776b72c7a28c6b20c3141",
+  "research_version": "r37",
+  "selected_by_signal": {
+    "b": null,
+    "jf": null,
+    "s": null
+  },
+  "status": "no_candidate"
+}

@@ -1,0 +1,53 @@
+{
+  "algorithm_sources": {
+    "gcn/backtest/engine.py": "1133f947c83db095788d9086557808023a97885867974e5dbc0a71d02b987ef5",
+    "gcn/backtest/historical_research.py": "30499ccc095fa22249561a66e275ba9494e47c15f10d8088bc162cca07739ea4",
+    "gcn/backtest/signal_audit.py": "3ba9d82b0b87457dc5cc1d47d0b95e95b489c265795b46773d121c473290a97f",
+    "gcn/backtest/signal_research_r36.py": "b5ac7b3f43c368f1da0ff4712daa522c72a82bd07121cdf9dfef78dd88922712",
+    "gcn/core/indicators.py": "053f46c98ff806afe0bcf25d1be46126aa1d2424aa893c0ae6321e0812cd5a30",
+    "gcn/core/registry.py": "8ad680e26911ac50b219336048c1b737fbbd8c2321096265e6b3f74ab1d940dd",
+    "gcn/core/tdx.py": "036af30dc4d03deb35e5a8684b0d203d5192cad5dcc491aed04161f516e13766",
+    "gcn/recipes/gcn_main.py": "7a4d507b451f9b8aaf490f261375919c0a837286e9ffe8f8a2bfe834acab4ac4"
+  },
+  "environment": {
+    "numpy": "2.4.4",
+    "pandas": "3.0.2",
+    "python": "3.11.14"
+  },
+  "folds": [
+    [
+      "2021-08-27",
+      "2022-08-26"
+    ],
+    [
+      "2022-08-27",
+      "2023-08-26"
+    ],
+    [
+      "2023-08-27",
+      "2024-08-26"
+    ],
+    [
+      "2024-08-27",
+      "2025-08-26"
+    ],
+    [
+      "2025-08-27",
+      "2026-08-27"
+    ]
+  ],
+  "outputs": {
+    "breakdown.csv": "8140b92fef5f4ee1e7c6c8f58f91770ff417efab13aaff4addd07f27e159ef85",
+    "data_quality.csv": "dabe6988d83a6f92055ec32df344f92e363346e5e48a2f7cc0a7cd1833ff9c7d",
+    "decision.json": "4ed9bd0b626a72df8496b86a133621a024f57be388e284bee10fd300ae6c05e7",
+    "events.csv": "10dbe54fd2486aa8ddcf2957c9fcffe083da080ede18e3bba42f97b66876f58d",
+    "metrics.csv": "6b80636edd4309c82aa1f88cc2e8dae8af1fe4a5f92febac01c452fb838938c4",
+    "predictions.csv": "92ccfb311267a24ea8d665770573d797e77b2dad1f14a5a78b8df19d26d374dd",
+    "protocol.md": "50f8a75c982032a3a3d47b01d360bc936140a070d6006944cb9d36719e4ce76d",
+    "reliability.csv": "5dd01b9c4e51dea7c124e6f3b2a972b7dcd8990a25defce9e311704d382a438d"
+  },
+  "parent_manifest_sha256": "42f1d19b3aacb4d738f01cd6362fa0f68b145115b72449c3dd0d14e02f755094",
+  "protocol_sha256": "50f8a75c982032a3a3d47b01d360bc936140a070d6006944cb9d36719e4ce76d",
+  "research_version": "r36",
+  "ridge": 8.0
+}
