@@ -215,6 +215,23 @@ def test_webui_data_source_identity_is_committed_atomically():
     assert "state.data !== locatedData" in script
 
 
+def test_webui_loads_chanlun_overlays_for_the_committed_ohlcv_data():
+    script = _inline_script()
+    assert 'fetch("/api/chanlun"' in script
+    assert "function validateChanlunPayload" in script
+    assert "function chanlunRows" in script
+    assert "state.chanlunEpoch === expectedEpoch" in script
+    assert 'cancelRequest("chanlun")' in script
+    assert "...chanStrokeSeries" in script
+    assert "...chanSegmentSeries" in script
+    assert "...chanCenterSeries" in script
+    for label in ("缠论笔", "缠论段", "缠论中枢"):
+        assert f'data-series="{label}"' in INDEX
+    assert 'chanLines(chanlun?.strokes, "缠论笔"' in script
+    assert 'chanLines(chanlun?.segments, "缠论段"' in script
+    assert 'name: "缠论中枢"' in script
+
+
 def test_webui_dialogs_and_report_state_are_accessible_and_atomic():
     script = _inline_script()
     for panel, title in (("scrPanel", "scrDialogTitle"),

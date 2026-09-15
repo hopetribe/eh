@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .DS_Store
+.playwright-cli/
 # Node dependencies are restored from the committed package lockfile.
 node_modules/
 

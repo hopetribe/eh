@@ -1,0 +1,3 @@
+[submodule "vendor/chanlun.py"]
+	path = vendor/chanlun.py
+	url = https://github.com/YuYuKunKun/chanlun.py.git

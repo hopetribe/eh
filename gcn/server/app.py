@@ -29,6 +29,7 @@ from gcn.data.service import (_auto_refresh_loop, DATA_DIR, DEFAULT_COUNT,
                               _rows_from_df, df_from_rows, fetch_quote,
                               parse_csv_text)
 from gcn.data.sample import make_sample_data
+from gcn.chanlun import analyze_frame
 from gcn.recipes.gcn_main import VERSIONS, compute_ehopt10
 
 PARAM_LIMITS = {
@@ -368,8 +369,8 @@ class UiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?", 1)[0]
         if path not in ("/api/compute", "/api/fetch", "/api/parse_csv",
-                        "/api/backtest", "/api/screener", "/api/radar/scan",
-                        "/api/radar/email"):
+                        "/api/chanlun", "/api/backtest", "/api/screener",
+                        "/api/radar/scan", "/api/radar/email"):
             self._send(404, b"not found", "text/plain; charset=utf-8")
             return
         if not _API_SLOTS.acquire(blocking=False):
@@ -397,6 +398,28 @@ class UiHandler(BaseHTTPRequestHandler):
                 _validate_frame(df)
                 self._send_json({"rows": _rows_from_df(df), "source": "csv",
                                  "note": f"已解析 {len(df)} 根K线"})
+                return
+
+            if path == "/api/chanlun":
+                source = req.get("source")
+                if source == "rows" or "rows" in req:
+                    if source not in (None, "rows"):
+                        raise ValueError("K线数据源与 rows 冲突")
+                    df = df_from_rows(req.get("rows"))
+                elif source == "csv":
+                    df = parse_csv_text(req.get("csv") or "")
+                elif source == "sample":
+                    df = make_sample_data(900, seed=int(req.get("seed") or 7))
+                else:
+                    raise ValueError("缺少K线数据")
+                _validate_frame(df)
+                symbol = str(req.get("symbol") or "SAMPLE").strip().upper()
+                if not symbol or len(symbol) > 64:
+                    raise ValueError("股票代码无效")
+                interval = str(req.get("interval") or "1d").strip().lower()
+                if interval not in TIMEFRAMES:
+                    raise ValueError(f"未知K线周期: {interval}")
+                self._send_json(analyze_frame(df, symbol, interval))
                 return
 
             if path == "/api/radar/scan":

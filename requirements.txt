@@ -1,3 +1,7 @@
 numpy>=1.24
 pandas>=2.0
 yfinance>=0.2.40
+backtrader==1.9.78.123
+loguru>=0.7.0,<1.0.0
+parse>=1.20.0,<2.0.0
+requests>=2.28.2

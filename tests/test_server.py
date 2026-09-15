@@ -191,6 +191,31 @@ def test_server_parse_csv_endpoint_serializes_rows():
     assert data["rows"] == [["2025-01-02", 10.0, 12.0, 9.0, 11.0, 1000.0]]
 
 
+def test_server_returns_chanlun_structure_for_client_rows():
+    rows = []
+    for index in range(180):
+        close = 100 + index * 0.03 + math.sin(index / 4.5) * 9
+        opening = close + math.cos(index / 3.2)
+        rows.append([
+            f"2024-{index // 20 + 1:02d}-{index % 20 + 1:02d}",
+            opening, max(opening, close) + 1.2, min(opening, close) - 1.2,
+            close, 1_000 + index,
+        ])
+    body = json.dumps({"source": "rows", "symbol": "BTC-USD", "interval": "1d",
+                       "rows": rows}).encode()
+    status, _, payload = _serve_request(
+        "POST", "/api/chanlun", body=body,
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert status == 200, payload
+    data = json.loads(payload)
+    assert data["provider"] == "chanlun.py"
+    assert data["summary"]["bars"] == len(rows)
+    assert data["summary"]["strokes"] > 0
+    assert data["buy_sell_points"] == []
+
+
 def test_server_parses_comma_markets_and_enforces_symbol_limit():
     assert _parse_markets("market=us,hk") == ["us", "hk"]
     assert _parse_markets("market=cn&market=us") == ["us", "cn"]

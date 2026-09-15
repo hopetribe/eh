@@ -10,6 +10,7 @@ Python 工程化实现，配套信号回测、基本面选股、机会雷达与�
   财报数据来自 Yahoo, 结构化条件逐条判定;
 - **机会雷达**: 主动扫描 A股/港股**总市值 ≥ 100亿本币**、美股**总市值 ≥ 50亿美元**的全部标的,
   发现近期 **B买 / 绝反** 信号；每天 09:00 扫描并发送邮件日报;
+- **缠论结构观察**: 固定接入 `chanlun.py` 核心，自动识别笔、段与中枢，并在 ECharts K 线上叠加展示;
 - **Web UI**: 纯标准库 HTTP 服务 + 原生 JS + ECharts, 无需前端构建工具。
 
 ---
@@ -18,6 +19,7 @@ Python 工程化实现，配套信号回测、基本面选股、机会雷达与�
 
 ```bash
 # 依赖: Python 3.9+, numpy, pandas, yfinance
+git submodule update --init --recursive
 pip install -r requirements.txt
 
 # 可选: FutuOpenD 行情源与动态股票池
@@ -65,7 +67,9 @@ gcn/
   backtest/     回测引擎: 信号预设组合, 资金曲线, 事件研究, 分段一致性
   screener/     基本面选股: 策略定义 / 财报指标计算 / 条件求值引擎
   radar/        机会雷达: 阈值股票池 / 扫描引擎 / 日K预热 / 每日调度 / 邮件日报
+  chanlun/      chanlun.py 的受限适配层（笔、段、中枢观察）
   plot.py       matplotlib 静态画图 (信号标注, 可选)
+vendor/         固定版本的 chanlun.py Git 子模块
 webui/          前端单页 (index.html + echarts.min.js)
 tests/          离线测试 (兼容 tests/run_all.py 与 pytest)
 data/           K线缓存与雷达结果缓存 (随仓库跟踪, 见下文"数据层")
@@ -230,6 +234,18 @@ python3 -m gcn.screener --strategy graham --market us   # CLI 选股 (-v 逐条�
 
 ---
 
+## 缠论结构观察
+
+页面每次成功计算 K 线后，会异步调用 `chanlun.py` 对同一份 OHLCV 数据识别**笔、段和中枢**；它们分别以紫色细线、橙色粗线和半透明紫色区间叠加在主图，可通过图例独立开关。现有行情源和 CSV 均可用于股票、ETF 与数字货币代码（取决于行情源的可用性）。
+
+上游固定在 Git 子模块 `vendor/chanlun.py` 的提交
+`2e4fa135b19eaa201fca7bfcc8ca4a86cbde7815`，归属和许可证见
+[`gcn/chanlun/NOTICE.md`](gcn/chanlun/NOTICE.md)。本项目只接入结构分析核心，并继续使用自身 ECharts 图表；不会分发上游的 TradingView 图表资源。
+
+固定上游版本当前未启用买卖点规则调用，因此 `/api/chanlun` 会明确返回空的 `buy_sell_points`，且不会把这些结构接入 GCN 的交易信号或回测。这样可避免把未验证的规则误作可交易信号。
+
+---
+
 ## 回测
 
 口径: 信号 T 日收盘确认 → **T+1 开盘价成交** (无未来函数), 只做多, 双边计入成本,
@@ -264,6 +280,7 @@ python3 -m gcn.screener --strategy graham --market us   # CLI 选股 (-v 逐条�
 | POST | `/api/fetch` | 拉取K线 `{symbol, interval, count}` (缓存优先) |
 | POST | `/api/compute` | 指标计算载荷 (rows/csv/sample) |
 | POST | `/api/parse_csv` | 解析粘贴的 CSV (中英文列名兼容) |
+| POST | `/api/chanlun` | 识别笔、段和中枢 `{rows/csv/sample, symbol, interval}` |
 | POST | `/api/backtest` | 回测 (params/cost/max_hold/years/version/**interval**), 返回 `timeframe` |
 | GET | `/api/screener/meta` | 选股策略元数据 |
 | POST | `/api/screener` | 运行基本面选股 `{strategy, market, symbols}` |

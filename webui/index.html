@@ -333,6 +333,7 @@
         <div class="legend-group"><span class="legend-label">行情</span><button class="legend-btn" data-series="K线"><i class="legend-candle"></i>K 线</button></div>
         <div class="legend-group"><span class="legend-label">布林</span><button class="legend-btn" data-series="布林MID"><i style="--legend-color:#f0a6c2"></i>MID</button><button class="legend-btn" data-series="布林UPPER"><i style="--legend-color:#eabf45"></i>UPPER</button><button class="legend-btn" data-series="布林LOWER"><i style="--legend-color:#38bdf8"></i>LOWER</button></div>
         <div class="legend-group"><span class="legend-label">信号</span><button class="legend-btn" data-series="S卖"><i class="legend-dot sell"></i>S卖</button><button class="legend-btn" data-series="S条件"><i class="legend-ring"></i>S条件</button><button class="legend-btn" data-series="B买Setup"><i style="--legend-color:#60a5fa"></i>Setup</button><button class="legend-btn" data-series="B买"><i class="legend-dot buy"></i>B买</button><button class="legend-btn" data-series="绝反"><i class="legend-dot reverse"></i>绝反</button><button class="legend-btn" data-series="九转标注"><i style="--legend-color:#d946ef"></i>九转</button><button class="legend-btn" data-series="定位"><i style="--legend-color:#4f8df7"></i>定位</button></div>
+        <div class="legend-group"><span class="legend-label">缠论</span><button class="legend-btn" data-series="缠论笔"><i style="--legend-color:#a78bfa"></i>笔</button><button class="legend-btn" data-series="缠论段"><i style="--legend-color:#fb923c"></i>段</button><button class="legend-btn" data-series="缠论中枢"><i style="--legend-color:#c084fc"></i>中枢</button></div>
         <div class="legend-group"><span class="legend-label">副图</span><button class="legend-btn" data-series="成交量"><i class="legend-bars"></i>成交量</button><button class="legend-btn" data-series="获利筹"><i style="--legend-color:#38bdf8"></i>获利筹</button><button class="legend-btn" data-series="V3"><i style="--legend-color:#f59e0b"></i>V3</button><button class="legend-btn" data-series="MACD"><i class="legend-bars"></i>MACD</button><button class="legend-btn" data-series="DIF"><i style="--legend-color:#f59e0b"></i>DIF</button><button class="legend-btn" data-series="DEA"><i style="--legend-color:#facc15"></i>DEA</button></div>
       </div>
     </nav>
@@ -483,6 +484,8 @@ const state = {
   quoteNote: "",
   csvName: "",
   data: null,                // 最近一次 /api/compute 结果
+  chanlun: null,             // 当前数据源的 chanlun.py 结构叠加
+  chanlunEpoch: -1,
   signalLimit: 24,           // 信号列表渐进渲染上限
   selectedSignal: null,      // 侧栏当前定位信号
   legendSelected: {},        // 外置分组图例显隐状态
@@ -554,6 +557,9 @@ function beginDataSourceChange() {
   cancelRequest("quote");
   cancelRequest("csv");
   cancelRequest("compute");
+  cancelRequest("chanlun");
+  state.chanlun = null;
+  state.chanlunEpoch = -1;
   invalidateReports("数据源已变化，请重新运行");
   return dataSourceEpoch;
 }
@@ -661,6 +667,68 @@ function validateComputePayload(data) {
     throw new Error("指标响应摘要无效");
   }
   return data;
+}
+
+function validateChanlunPayload(data, expectedBars) {
+  if (!data || typeof data !== "object" || Array.isArray(data) ||
+      data.provider !== "chanlun.py" || !data.summary ||
+      !Number.isInteger(data.summary.bars) || data.summary.bars !== expectedBars ||
+      !Array.isArray(data.strokes) || !Array.isArray(data.segments) ||
+      !Array.isArray(data.centers) || !Array.isArray(data.buy_sell_points)) {
+    throw new Error("缠论响应格式无效");
+  }
+  const validIndex = (value) => Number.isInteger(value) && value >= 0 && value < expectedBars;
+  const validPrice = (value) => Number.isFinite(value) && value > 0;
+  for (const line of [...data.strokes, ...data.segments]) {
+    if (!line || typeof line !== "object" || !validIndex(line.start_index) ||
+        !validIndex(line.end_index) || line.start_index >= line.end_index ||
+        !validPrice(line.start_price) || !validPrice(line.end_price)) {
+      throw new Error("缠论线段数据无效");
+    }
+  }
+  for (const center of data.centers) {
+    if (!center || typeof center !== "object" || !validIndex(center.start_index) ||
+        !validIndex(center.end_index) || center.start_index >= center.end_index ||
+        !validPrice(center.low) || !validPrice(center.high) || center.low > center.high) {
+      throw new Error("缠论中枢数据无效");
+    }
+  }
+  return data;
+}
+
+function chanlunRows(d) {
+  return d.dates.map((date, index) => [
+    date, d.open[index], d.high[index], d.low[index], d.close[index], d.volume[index],
+  ]);
+}
+
+async function requestChanlunAnalysis(expectedEpoch, data) {
+  if (!isCurrentDataSource(expectedEpoch) || state.chanlunEpoch === expectedEpoch) return;
+  const request = beginRequest("chanlun");
+  try {
+    const r = await fetch("/api/chanlun", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: "rows", rows: chanlunRows(data),
+        symbol: state.source === "sample" ? "SAMPLE" : state.symbol,
+        interval: state.dataInterval,
+      }),
+      signal: request.signal,
+    });
+    const payload = await r.json();
+    if (!isCurrentRequest(request) || !isCurrentDataSource(expectedEpoch) || state.data !== data) return;
+    if (!r.ok || payload?.error) throw new Error(payload?.error || `HTTP ${r.status}`);
+    state.chanlun = validateChanlunPayload(payload, data.dates.length);
+    state.chanlunEpoch = expectedEpoch;
+    renderChart(data);
+  } catch (error) {
+    if (!isAbortError(error) && isCurrentRequest(request) && isCurrentDataSource(expectedEpoch)) {
+      toast("缠论结构加载失败: " + (error.message || error));
+    }
+  } finally {
+    finishRequest(request);
+  }
 }
 
 function clearDerivedView(message = "正在计算新数据…") {
@@ -930,6 +998,7 @@ async function recompute(expectedEpoch = dataSourceEpoch) {
     candidateData = validateComputePayload(data);
     state.data = candidateData;
     renderAll(candidateData);
+    void requestChanlunAnalysis(expectedEpoch, candidateData);
     return true;
   } catch (e) {
     if (isAbortError(e) || !isCurrentRequest(request) || expectedEpoch !== dataSourceEpoch) return false;
@@ -1209,6 +1278,28 @@ function renderChart(d) {
     value: v,
     itemStyle: { color: v != null && v >= 0 ? "rgba(239,68,68,.76)" : "rgba(34,197,94,.76)" },
   }));
+  const chanlun = state.chanlun;
+  const chanLines = (items, name, color, width, z) => (items || []).slice(-240).map((line) => ({
+    name, type: "line", xAxisIndex: 0, yAxisIndex: 0,
+    data: [[line.start_index, line.start_price], [line.end_index, line.end_price]],
+    symbol: "none", silent: true, tooltip: { show: false },
+    lineStyle: { color, width, opacity: .9 }, z,
+  }));
+  const chanCenterSeries = [{
+    name: "缠论中枢", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: [],
+    symbol: "none", silent: true, tooltip: { show: false }, z: 7,
+    markArea: {
+      silent: true,
+      label: { show: false },
+      itemStyle: { color: "rgba(192,132,252,.10)", borderColor: "rgba(192,132,252,.62)", borderWidth: 1 },
+      data: (chanlun?.centers || []).slice(-80).map((center) => [
+        { xAxis: center.start_index, yAxis: center.low },
+        { xAxis: center.end_index, yAxis: center.high },
+      ]),
+    },
+  }];
+  const chanStrokeSeries = chanLines(chanlun?.strokes, "缠论笔", "#a78bfa", 1.2, 8);
+  const chanSegmentSeries = chanLines(chanlun?.segments, "缠论段", "#fb923c", 2.2, 9);
 
   const option = {
     animation: false,
@@ -1252,7 +1343,8 @@ function renderChart(d) {
       selectedMode: true,
       selected: state.legendSelected,
       data: ["K线", "布林MID", "布林UPPER", "布林LOWER", "九转标注", "S卖", "S条件",
-        "B买Setup", "B买", "绝反", "定位", "成交量", "获利筹", "V3", "MACD", "DIF", "DEA"],
+        "B买Setup", "B买", "绝反", "定位", "缠论笔", "缠论段", "缠论中枢",
+        "成交量", "获利筹", "V3", "MACD", "DIF", "DEA"],
     },
     grid: [
       { left: 14, right: 64, top: 12, height: "48%" },       // 0 主图
@@ -1318,6 +1410,9 @@ function renderChart(d) {
         symbol: "none", lineStyle: { width: 1, color: "#eabf45", opacity: .82 }, z: 6 },
       { name: "布林LOWER", type: "line", xAxisIndex: 0, yAxisIndex: 0, data: d.lower,
         symbol: "none", lineStyle: { width: 1, color: "#38bdf8", opacity: .82 }, z: 6 },
+      ...chanCenterSeries,
+      ...chanStrokeSeries,
+      ...chanSegmentSeries,
       { name: "九转标注", ...nineLabelSeries, xAxisIndex: 0, yAxisIndex: 0,
         data: labelPts(d.upLabel, (i) => d.high[i]),
         label: mkLabel("top", "#d946ef") },
