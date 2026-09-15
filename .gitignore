@@ -1,6 +1,12 @@
 __pycache__/
 *.pyc
 .DS_Store
+# Node dependencies are restored from the committed package lockfile.
+node_modules/
+
+# Runtime market-data cache. Existing tracked CSVs remain reviewable; this
+# prevents newly refreshed symbols and intervals from being added by default.
+data/*.csv
 data/*.lock
 data/*.csv.meta.json
 data/radar_email_settings.json
