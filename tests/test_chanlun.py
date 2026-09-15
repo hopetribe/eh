@@ -25,16 +25,16 @@ def test_chanlun_analysis_serializes_structures_on_kk2_ohlcv():
     assert result["summary"]["bars"] == 240
     assert result["summary"]["strokes"] >= 6
     assert result["summary"]["segments"] >= 1
-    assert len(result["buy_sell_points"]) == result["summary"]["strokes"]
-    assert result["summary"]["chan_buy"] + result["summary"]["chan_sell"] == \
-        len(result["buy_sell_points"])
+    assert result["buy_sell_points"] == []
+    assert result["summary"]["chan_buy"] == result["summary"]["chan_sell"] == 0
     assert all(0 <= item["start_index"] < item["end_index"] < 240
                for item in result["strokes"])
     assert all(item["low"] <= item["high"] for item in result["centers"])
-    strokes_by_end = {item["end_index"]: item for item in result["strokes"]}
-    for point in result["buy_sell_points"]:
-        stroke = strokes_by_end[point["index"]]
-        assert point["label"] in ("缠买", "缠卖")
-        assert point["side"] == ("buy" if stroke["end_price"] < stroke["start_price"] else "sell")
-        assert point["price"] == stroke["end_price"]
-        assert point["rule"] == "completed_stroke_endpoint"
+
+
+def test_chanlun_structure_analysis_does_not_emit_buy_or_sell_signals():
+    result = analyze_frame(_wave_frame(120), symbol="BTC-USD", interval="1d")
+
+    assert result["buy_sell_points"] == []
+    assert result["summary"]["chan_buy"] == 0
+    assert result["summary"]["chan_sell"] == 0

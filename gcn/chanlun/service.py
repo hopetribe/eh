@@ -116,34 +116,21 @@ def _center_payload(items, time_indices: dict[int, int], kind: str) -> list[dict
     return payload
 
 
-def _buy_sell_payload(strokes: list[dict]) -> list[dict]:
-    """Mark the endpoint of each completed stroke as a structural turn.
-
-    The pinned upstream revision exposes buy/sell point data types but does not
-    enable a concrete first/second/third-point rule.  A completed downward
-    stroke therefore yields an explicitly labelled ``缠买`` endpoint and a
-    completed upward stroke a ``缠卖`` endpoint.  These are confirmed structure
-    observations, not executable trade signals.
-    """
-    points = []
-    for stroke in strokes:
-        is_buy = stroke["end_price"] < stroke["start_price"]
-        points.append({
-            "index": stroke["end_index"],
-            "price": stroke["end_price"],
-            "side": "buy" if is_buy else "sell",
-            "label": "缠买" if is_buy else "缠卖",
-            "rule": "completed_stroke_endpoint",
-        })
-    return points
+def _feed(observer, timestamp, row) -> None:
+    observer.投喂原始数据(
+        pd.Timestamp(timestamp).to_pydatetime(),
+        _finite(row.open, "open"), _finite(row.high, "high"),
+        _finite(row.low, "low"), _finite(row.close, "close"),
+        _finite(row.volume, "volume"),
+    )
 
 
 def analyze_frame(frame: pd.DataFrame, symbol: str, interval: str) -> dict:
     """Return chanlun.py structure overlays for a validated KK2 OHLCV frame.
 
-    This is an analysis-only endpoint. Its ``缠买`` / ``缠卖`` labels are
-    completed-stroke endpoints, not the upstream project's disabled first,
-    second, or third buy/sell rules and not a trading recommendation.
+    This analysis-only endpoint exposes strokes, segments, and centers.  The
+    pinned upstream revision does not enable a concrete first/second/third
+    buy/sell-point rule, so it intentionally emits no buy/sell signals.
     """
     interval = str(interval).strip().lower()
     if interval not in _INTERVAL_SECONDS:
@@ -162,7 +149,7 @@ def analyze_frame(frame: pd.DataFrame, symbol: str, interval: str) -> dict:
         "segments": [],
         "centers": [],
         "buy_sell_points": [],
-        "note": "缠买/缠卖为已完成笔端点的结构标记，不是一二三类买卖点，也不构成交易建议。",
+        "note": "仅提供笔、段和中枢结构观察；不输出缠买/缠卖信号或交易建议。",
     }
     if len(clean) < 3:
         return result
@@ -173,20 +160,16 @@ def analyze_frame(frame: pd.DataFrame, symbol: str, interval: str) -> dict:
         线段内部中枢图显=False,
         分析扩展线段=False,
     )
-    observer = upstream.观察者(str(symbol).strip().upper(), _INTERVAL_SECONDS[interval], config)
+    normalized_symbol = str(symbol).strip().upper()
+    observer = upstream.观察者(normalized_symbol, _INTERVAL_SECONDS[interval], config)
     for timestamp, row in clean.iterrows():
-        observer.投喂原始数据(
-            pd.Timestamp(timestamp).to_pydatetime(),
-            _finite(row.open, "open"), _finite(row.high, "high"),
-            _finite(row.low, "low"), _finite(row.close, "close"),
-            _finite(row.volume, "volume"),
-        )
+        _feed(observer, timestamp, row)
 
     strokes = _line_payload(observer.笔序列, time_indices, "stroke")
     segments = _line_payload(observer.线段序列, time_indices, "segment")
     centers = (_center_payload(observer.笔_中枢序列, time_indices, "stroke")
                + _center_payload(observer.中枢序列, time_indices, "segment"))
-    buy_sell_points = _buy_sell_payload(strokes)
+    buy_sell_points = []
     result.update(strokes=strokes, segments=segments, centers=centers,
                   buy_sell_points=buy_sell_points)
     result["summary"].update(chan_bars=len(observer.缠论K线序列), strokes=len(strokes),
