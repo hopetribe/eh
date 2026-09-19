@@ -47,12 +47,12 @@ def test_universe_lists_wellformed():
 
 def test_threshold_cache_schema_tracks_inclusive_boundary():
     import gcn.radar.universe as universe
-    assert universe.UNIVERSE_CACHE_SCHEMA == 3
+    assert universe.UNIVERSE_CACHE_SCHEMA == 4
 
 
 def test_futu_universe_contract_and_cross_market_deduplication():
     import gcn.radar.universe as universe
-    threshold = universe.MARKET_CAP_THRESHOLDS["cn"]
+    threshold = 1.0
     seen_filters = []
     class SimpleFilter: pass
     class Context:
@@ -93,9 +93,9 @@ def test_threshold_universe_uses_stale_same_schema_cache_before_static():
     with tempfile.TemporaryDirectory() as tmp, \
          _patched(universe, "DATA_DIR", Path(tmp)), \
          _patched(universe, "_opend_reachable", lambda: False), \
-         _patched(universe, "_fetch_yahoo_threshold", lambda market: None):
+         _patched(universe, "_fetch_yahoo_top", lambda market: None):
         blob = {"schema": universe.UNIVERSE_CACHE_SCHEMA, "day": "2020-01-01",
-                "threshold": universe.MARKET_CAP_THRESHOLDS["us"],
+                "top_n": 300,
                 "list": [["STALE", "旧阈值快照"]]}
         universe._universe_cache_path("us").write_text(
             json.dumps(blob, ensure_ascii=False), encoding="utf-8")
@@ -104,27 +104,27 @@ def test_threshold_universe_uses_stale_same_schema_cache_before_static():
     assert source == "dynamic-cache-stale"
 
 
-def test_threshold_universe_keeps_previous_schema_as_failure_fallback():
+def test_top_universe_rejects_old_threshold_cache():
     import json
     import gcn.radar.universe as universe
     with tempfile.TemporaryDirectory() as tmp, \
          _patched(universe, "DATA_DIR", Path(tmp)), \
          _patched(universe, "_opend_reachable", lambda: False), \
-         _patched(universe, "_fetch_yahoo_threshold", lambda market: None):
+         _patched(universe, "_fetch_yahoo_top", lambda market: None):
         blob = {"schema": universe.UNIVERSE_CACHE_SCHEMA - 1,
                 "day": time.strftime("%Y-%m-%d"),
-                "threshold": universe.MARKET_CAP_THRESHOLDS["cn"],
+                "threshold": 1.0,
                 "list": [["600519", "旧全量快照"]]}
         universe._universe_cache_path("cn").write_text(
             json.dumps(blob, ensure_ascii=False), encoding="utf-8")
         items, source = universe.get_universe("cn")
-    assert items == [("600519", "旧全量快照")]
-    assert source == "dynamic-cache-stale"
+    assert items == universe._static_universe("cn")
+    assert source == "static-partial"
 
 
 def test_yahoo_threshold_universe_paginates_and_normalizes_codes():
     import gcn.radar.universe as universe
-    threshold = universe.MARKET_CAP_THRESHOLDS["hk"]
+    threshold = 1.0
     offsets = []
 
     class EquityQuery:
@@ -150,7 +150,7 @@ def test_yahoo_threshold_universe_paginates_and_normalizes_codes():
     try:
         sys.modules["yfinance"] = fake
         with _patched(universe, "YAHOO_PAGE_SIZE", 2):
-            out = universe._fetch_yahoo_threshold("hk")
+            out = universe._fetch_yahoo_top("hk")
     finally:
         if old is None: sys.modules.pop("yfinance", None)
         else: sys.modules["yfinance"] = old
@@ -160,7 +160,7 @@ def test_yahoo_threshold_universe_paginates_and_normalizes_codes():
 
 def test_yahoo_threshold_discards_partial_pagination():
     import gcn.radar.universe as universe
-    threshold = universe.MARKET_CAP_THRESHOLDS["us"]
+    threshold = 1.0
 
     class EquityQuery:
         def __init__(self, op, args): pass
@@ -178,7 +178,7 @@ def test_yahoo_threshold_discards_partial_pagination():
     try:
         sys.modules["yfinance"] = fake
         with _patched(universe, "YAHOO_PAGE_SIZE", 2):
-            out = universe._fetch_yahoo_threshold("us")
+            out = universe._fetch_yahoo_top("us")
     finally:
         if old is None: sys.modules.pop("yfinance", None)
         else: sys.modules["yfinance"] = old
@@ -190,9 +190,9 @@ def test_get_universe_uses_yahoo_when_opend_is_offline():
     with tempfile.TemporaryDirectory() as tmp, \
          _patched(universe, "DATA_DIR", Path(tmp)), \
          _patched(universe, "_opend_reachable", lambda: False), \
-         _patched(universe, "_fetch_yahoo_threshold", lambda market: [("YHOO", "动态池")]):
+         _patched(universe, "_fetch_yahoo_top", lambda market: [("YHOO", "动态池")]):
         items, source = universe.get_universe("us", use_cache=False)
-        cached = universe._read_threshold_cache("us")
+        cached = universe._read_top_cache("us")
     assert items == [("YHOO", "动态池")] and source == "yahoo"
     assert cached["provider"] == "yahoo"
 
@@ -287,7 +287,7 @@ def test_scan_symbol_error_isolated():
 # ---------------- 市场扫描与调度 ----------------
 
 def test_scan_market_keeps_hits_sorted():
-    def fake_scan(code, market, name="", count=300):
+    def fake_scan(code, market, name="", count=300, config=None):
         if code == "A1":
             return {"code": code, "market": market, "name": name, "date": "d",
                     "close": 1, "chg_pct": 0, "error": None,
@@ -322,7 +322,7 @@ def _wait_job(svc, market, timeout=10):
 def test_service_scan_cache_and_fresh():
     calls = {"n": 0}
 
-    def fake_scan_market(market, progress=None, max_workers=6):
+    def fake_scan_market(market, progress=None, max_workers=6, config=None):
         calls["n"] += 1
         return {"market": market, "universe_source": "static", "n_scanned": 100,
                 "universe_schema": engine.UNIVERSE_CACHE_SCHEMA,
@@ -339,7 +339,7 @@ def test_service_scan_cache_and_fresh():
         svc = engine.RadarService()
 
         snap = svc.ensure_fresh(["us"])  # 无缓存 -> 自动开扫
-        assert snap["markets"]["us"]["scanning"]
+        assert snap["markets"]["us"]["job"]["status"] in {"scanning", "done"}
         job = _wait_job(svc, "us")
         assert job["status"] == "done" and calls["n"] == 1
 
@@ -358,7 +358,7 @@ def test_service_scan_cache_and_fresh():
 
 
 def test_service_snapshot_error_kept():
-    def fail_scan(market, progress=None, max_workers=6):
+    def fail_scan(market, progress=None, max_workers=6, config=None):
         raise RuntimeError("断网")
 
     with tempfile.TemporaryDirectory() as tmp, \
@@ -383,7 +383,7 @@ def test_service_marks_previous_universe_schema_cache_stale():
 
 
 def test_service_all_symbol_failures_preserve_previous_cache():
-    def all_failed(market, progress=None, max_workers=6):
+    def all_failed(market, progress=None, max_workers=6, config=None):
         return {"market": market, "universe_source": "static", "n_scanned": 3,
                 "n_errors": 3, "n_hits": 0, "results": [],
                 "generated_at": time.time()}
@@ -401,12 +401,13 @@ def test_service_all_symbol_failures_preserve_previous_cache():
 
 
 def test_service_partial_failures_keep_failed_symbols_previous_hits():
-    def partial(market, progress=None, max_workers=6):
+    def partial(market, progress=None, max_workers=6, config=None):
         return {"market": market, "universe_source": "static", "n_scanned": 2,
                 "n_errors": 1, "n_hits": 1,
                 "results": [{"code": "A", "signals": [{"days_ago": 0}]}],
                 "failed_codes": ["B"], "generated_at": time.time()}
-    old = {"market": "us", "n_scanned": 2, "n_errors": 0, "n_hits": 2,
+    old = {"config": engine.normalize_config(), "universe_schema": engine.UNIVERSE_CACHE_SCHEMA,
+           "market": "us", "n_scanned": 2, "n_errors": 0, "n_hits": 2,
            "results": [{"code": "A", "signals": [{"days_ago": 2}]},
                        {"code": "B", "signals": [{"days_ago": 3}]}],
            "generated_at": time.time() - 100}

@@ -247,36 +247,6 @@
         <div id="quoteInfo" class="data-status" role="status"><span class="status-dot"></span><span>加载行情中…</span></div>
       </section>
 
-      <details class="side-card collapse" id="paramSec">
-        <summary><span>策略参数</span><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6.5 8 3.5 3.5L13.5 8"/></svg></summary>
-        <div class="parameter-body">
-      <div class="param" data-key="SD">
-        <div class="row1"><span class="name">SD <small>2 ~ 120</small></span>
-          <input type="number" aria-label="SD 数值" min="2" max="120" step="1" value="20"></div>
-        <input type="range" aria-label="SD 滑块" min="2" max="120" step="1" value="20">
-        <div class="desc">布林带周期 STDP(CLOSE, SD)</div>
-      </div>
-      <div class="param" data-key="WIDTH">
-        <div class="row1"><span class="name">WIDTH <small>0 ~ 100</small></span>
-          <input type="number" aria-label="WIDTH 数值" min="0" max="100" step="0.5" value="2"></div>
-        <input type="range" aria-label="WIDTH 滑块" min="0" max="100" step="0.5" value="2">
-        <div class="desc">布林带宽度倍数 MID ± WIDTH×DIS</div>
-      </div>
-      <div class="param" data-key="N">
-        <div class="row1"><span class="name">N <small>0 ~ 1000</small></span>
-          <input type="number" aria-label="N 数值" min="0" max="1000" step="1" value="4"></div>
-        <input type="range" aria-label="N 滑块" min="0" max="1000" step="1" value="4">
-        <div class="desc">九转比较前第 N 根K线收盘价</div>
-      </div>
-      <div class="param" data-key="OFFSET">
-        <div class="row1"><span class="name">OFFSET <small>0 ~ 1000</small></span>
-          <input type="number" aria-label="OFFSET 数值" min="0" max="1000" step="1" value="15"></div>
-        <input type="range" aria-label="OFFSET 滑块" min="0" max="1000" step="1" value="15">
-        <div class="desc">九转数字标注偏移距离</div>
-      </div>
-      </div>
-      </details>
-
       <section class="side-card snapshot-card" aria-labelledby="snapshotTitle">
         <div class="section-heading" id="snapshotTitle">最新 K 线</div>
         <div id="summary" class="snapshot-grid"></div>
@@ -379,10 +349,10 @@
 <div id="radOverlay" aria-hidden="true">
   <div id="radPanel" role="dialog" aria-modal="true" aria-labelledby="radDialogTitle" tabindex="-1">
     <div style="display:flex;justify-content:space-between;align-items:center">
-      <h2 id="radDialogTitle">机会雷达 <span class="muted">A股/港股 &gt; 100亿 · 美股 &gt; 50亿 · 近期 B买 / 绝反</span></h2>
+      <h2 id="radDialogTitle">机会雷达 <span class="muted">A股市值 TOP300 · 港股市值 TOP100 · 美股市值 TOP300</span></h2>
       <button class="btn" id="radClose">关闭</button>
     </div>
-    <div class="muted">信号为 EHOPT10 v4 口径 (T 日收盘确认) · 每天 09:00 (Asia/Shanghai) 自动扫描 · 点击列表行在主图打开该标的</div>
+    <div class="muted">版本跟随主图 · 日K未收盘信号可能变化 · 每天 09:00 (Asia/Shanghai) 自动扫描 · 点击列表行打开日K主图</div>
     <div class="rad-row">
       <select id="radMarket" aria-label="雷达市场">
         <option value="all" selected>全部市场</option>
@@ -395,9 +365,14 @@
         <option value="5" selected>近1周 (5个交易日)</option>
         <option value="10">近2周 (10个交易日)</option>
       </select>
-      <button class="btn primary" id="radScan">重新扫描</button>
+      <button class="btn primary" id="radScan">保存配置并扫描</button>
       <span class="muted" id="radStatus" role="status"></span>
     </div>
+    <fieldset class="rad-signal-config">
+      <legend id="radVersion">扫描信号</legend>
+      <div id="radSignals" class="rad-row"></div>
+      <div class="muted" id="radConfigNote">勾选信号后点击“保存配置并扫描”；每日扫描也使用该配置。</div>
+    </fieldset>
     <section class="rad-email-card" aria-labelledby="radEmailTitle">
       <div class="rad-email-head">
         <div>
@@ -417,7 +392,7 @@
     </section>
     <div id="radResult"><div class="muted">加载中…</div></div>
     <div class="sec-h">说明</div>
-    <div class="muted">股票池按本币总市值过滤：A股/港股 ≥ 100亿，美股 ≥ 50亿；优先使用 FutuOpenD，离线时由 Yahoo Screener 获取完整动态池，
+    <div class="muted">股票池按本币总市值降序排名：A股 TOP300、港股 TOP100、美股 TOP300；优先使用 FutuOpenD，离线时使用 Yahoo Screener，
       两个动态源均不可用时复用最近动态快照，从未生成动态快照时才使用覆盖不完整的静态兜底；
       日K数据由服务端每小时增量巡检，每日 09:00 扫描并在完成后发送邮件；
       "信号日"为最近出现信号的交易日; 列表按最近信号新 → 旧排序, 同日按代码排序。</div>
@@ -551,7 +526,6 @@ function invalidateReports(message = "配置已变化，请重新运行") {
 
 function beginDataSourceChange() {
   dataSourceEpoch += 1;
-  clearTimeout(computeTimer);
   if (activeCsvReader?.readyState === FileReader.LOADING) activeCsvReader.abort();
   activeCsvReader = null;
   cancelRequest("quote");
@@ -883,7 +857,6 @@ document.addEventListener("keydown", (event) => {
 });
 sidebarMedia.addEventListener("change", () => setSidebarOpen(false));
 setSidebarOpen(false);
-$("#paramSec").addEventListener("toggle", requestChartResize);
 
 function setLoading(loading, label = "计算中") {
   const el = $("#loading");
@@ -917,48 +890,8 @@ function setChartError(message) {
   }
 }
 
-/* ============================== 参数控件 ============================== */
-function readParams() {
-  const p = {};
-  document.querySelectorAll(".param").forEach((el) => {
-    p[el.dataset.key] = parseFloat(el.querySelector("input[type=number]").value);
-  });
-  return p;
-}
-function bindParams() {
-  document.querySelectorAll(".param").forEach((el) => {
-    const num = el.querySelector("input[type=number]");
-    const rng = el.querySelector("input[type=range]");
-    const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
-    // 失焦/回车时收敛越界值并重算
-    num.addEventListener("change", () => {
-      let v = parseFloat(num.value);
-      if (isNaN(v)) v = parseFloat(num.min);
-      num.value = v = clamp(v, parseFloat(num.min), parseFloat(num.max));
-      rng.value = v;
-      scheduleCompute();
-    });
-    // 边输入边重算 (防抖避免中间态请求)
-    num.addEventListener("input", () => {
-      const v = parseFloat(num.value);
-      if (!isNaN(v)) rng.value = clamp(v, parseFloat(num.min), parseFloat(num.max));
-      scheduleCompute();
-    });
-    rng.addEventListener("input", () => {
-      num.value = rng.value;
-      scheduleCompute();
-    });
-  });
-}
-bindParams();
-
-/* ============================== 计算 ============================== */
-let computeTimer = null;
-function scheduleCompute() {
-  invalidateReports();
-  clearTimeout(computeTimer);
-  computeTimer = setTimeout(recompute, 300);
-}
+/* 策略参数由服务端统一使用默认值，雷达与主图保持一致。 */
+function readParams() { return {}; }
 
 let toastTimer = null;
 function toast(msg) {
@@ -2100,6 +2033,32 @@ const RADAR_MKT_NAME = { us: "美股", hk: "港股", cn: "A股" };
 let radarData = null;   // 最近一次 /api/radar 快照 (各市场 job + cache)
 let radarTimer = null;
 let radarEmailSettings = null;
+let radarConfig = null;
+
+function renderRadarConfig(options) {
+  $("#radScan").disabled = !radarConfig.signals.length;
+  $("#radVersion").textContent = "扫描信号 · GCN " + state.version;
+  $("#radSignals").innerHTML = options.map((item) =>
+    '<label><input type="checkbox" value="' + esc(item.id) + '"' +
+    (radarConfig.signals.includes(item.id) ? ' checked' : '') + '> ' +
+    esc(item.label) + '</label>').join("");
+}
+
+function radarQuery() {
+  const query = new URLSearchParams({version: state.version});
+  if (radarConfig?.version === state.version) query.set("signals", radarConfig.signals.join(","));
+  return query.toString();
+}
+
+$("#radSignals").addEventListener("change", () => {
+  const signals = [...$("#radSignals").querySelectorAll("input:checked")].map((input) => input.value);
+  $("#radScan").disabled = !signals.length;
+  stopRadarPoll();
+  radarData = null;
+  $("#radResult").textContent = signals.length ? "配置已更改，请保存并扫描。" : "请至少选择一种信号。";
+  radarConfig = {version: state.version, signals};
+  if (signals.length) pollRadar();
+});
 
 function stopRadarPoll() {
   if (radarTimer) { clearTimeout(radarTimer); radarTimer = null; }
@@ -2107,13 +2066,25 @@ function stopRadarPoll() {
 }
 
 async function pollRadar() {
+  if (radarConfig?.version === state.version && !radarConfig.signals.length) return;
   const request = beginRequest("radarPoll");
   try {
-    const r = await fetch("/api/radar", { signal: request.signal });
+    const r = await fetch("/api/radar?" + radarQuery(), { signal: request.signal });
     const data = await r.json();
     if (!isCurrentRequest(request)) return;
     if (data.error || !data.markets) throw new Error(data.error || "雷达响应格式无效");
+    if (!radarConfig || radarConfig.version !== state.version) {
+      radarConfig = data.saved_config.version === state.version ? data.saved_config : data.config;
+      renderRadarConfig(data.signal_options);
+      if (JSON.stringify(radarConfig) !== JSON.stringify(data.config)) {
+        pollRadar();
+        return;
+      }
+    }
     radarData = data.markets;
+    $("#radConfigNote").textContent = "每日扫描已保存：GCN " + data.saved_config.version +
+      " · " + data.saved_config.signals.map((key) => SIG_TYPES.find((item) => item[0] === key)?.[1] || key).join(" / ") +
+      "。修改后请保存配置并扫描。";
   } catch (e) {
     if (isAbortError(e) || !isCurrentRequest(request)) return;
     $("#radStatus").textContent = "加载失败";
@@ -2215,13 +2186,16 @@ async function updateRadarRecipient(action, email) {
 }
 
 async function startRadarScan(market) {
+  if (!radarConfig?.signals.length) { toast("请至少选择一种信号"); return; }
   stopRadarPoll();
-  $("#radStatus").textContent = "扫描已发起, 服务端后台进行中…";
+  $("#radScan").disabled = true;
+  $("#radSignals").closest("fieldset").disabled = true;
+  $("#radStatus").textContent = "正在提交扫描…";
   const request = beginRequest("radarScan");
   try {
     const response = await fetch("/api/radar/scan", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ market }),
+      body: JSON.stringify({ market, ...radarConfig }),
       signal: request.signal,
     });
     const data = await response.json();
@@ -2229,10 +2203,12 @@ async function startRadarScan(market) {
     if (data.error) throw new Error(data.error);
   } catch (e) {
     if (isAbortError(e) || !isCurrentRequest(request)) return;
-    $("#radStatus").textContent = "扫描发起失败";
+    $("#radStatus").textContent = "扫描发起失败：" + e.message;
     return;
   } finally {
     finishRequest(request);
+    $("#radScan").disabled = !radarConfig?.signals.length;
+    $("#radSignals").closest("fieldset").disabled = false;
   }
   radarTimer = setTimeout(pollRadar, 500);
 }
@@ -2256,7 +2232,7 @@ function renderRadar() {
     let status;
     if (b.scanning) {
       scanning = true;
-      status = `扫描中 ${job.done || 0}/${job.total || "?"} (完成后自动刷新)`;
+      status = `GCN ${esc(job.config?.version || "")} 扫描中 ${job.done || 0}/${job.total || "?"} (完成后自动刷新)`;
     } else if (cache) {
       const t = new Date(cache.generated_at * 1000)
         .toLocaleTimeString("zh-CN", { hour12: false });
@@ -2264,21 +2240,23 @@ function renderRadar() {
         (cache.n_errors ? ` · 失败 ${cache.n_errors}` : "") +
         (cache.universe_source === "yahoo" ? " · Yahoo动态股票池" : "") +
         (cache.universe_source === "dynamic-cache-stale" ? " · 最近动态股票池" : "") +
-        (cache.universe_source === "static-partial" ? " · 静态兜底（覆盖不完整）" : "") +
+        (cache.universe_source === "static-partial" ? " · 静态兜底（非实时排名）" : "") +
+        (!cache.universe_complete ? " · 覆盖/排名不完整" : "") +
         (b.stale ? " · 待定时/手动刷新" : "");
     } else {
-      status = "尚无数据";
+      status = "当前配置尚无数据";
     }
+    if (job.error) status += " · 扫描失败：" + esc(job.error);
     html += `<div class="sec-h">${RADAR_MKT_NAME[m]} <span class="muted">${status}</span></div>`;
     if (!cache) {
       html += b.scanning
-        ? '<div class="muted">首次扫描进行中，耗时取决于阈值股票池规模，可先看其他市场…</div>'
+        ? '<div class="muted">首次扫描进行中，耗时取决于市值 TOP 股票池规模，可先看其他市场…</div>'
         : '<div class="muted">尚无扫描缓存；系统将在 09:00 自动扫描，也可立即手动扫描</div>';
       continue;
     }
     const hits = cache.results.filter((r) => r.signals.some((s) => s.days_ago < win));
     if (!hits.length) {
-      html += '<div class="muted">窗口内无 B买 / 绝反 信号</div>';
+      html += '<div class="muted">窗口内无所选信号</div>';
       continue;
     }
     html += "<table><thead><tr><th>市场</th><th>代码</th><th>名称</th>" +
@@ -2286,13 +2264,13 @@ function renderRadar() {
     for (const r of hits) {
       const sigs = r.signals.filter((s) => s.days_ago < win);
       const sigHtml = sigs.map((s) =>
-        `<span class="badge ${s.type === "B买" ? "b-buy" : "b-juefan"}">${esc(s.type)}</span>` +
+        `<span class="badge ${SIG_TYPES.find((item) => item[1] === s.type)?.[2] || "b-scond"}">${esc(s.type)}</span>` +
         ` <span class="muted" style="font-size:11px">${esc(s.date)}</span>`).join("<br>");
       const chgCls = r.chg_pct == null ? "muted" : (r.chg_pct >= 0 ? "rad-up" : "rad-down");
       html += `<tr data-code="${esc(r.code)}" data-market="${esc(r.market)}">` +
         `<td><span class="rad-mkt">${esc(RADAR_MKT_NAME[r.market] || r.market)}</span></td>` +
         `<td><button class="rad-symbol" type="button" aria-label="加载行情 ${esc(r.code)}">` +
-        `${esc(r.code)}</button></td><td class="tname">${esc(r.name) || "--"}</td>` +
+        `${esc(r.code)}</button></td><td class="tname">${esc(r.name) || "--"}${r.stale ? ' · 旧命中（刷新失败）' : ""}</td>` +
         `<td>${num(r.close)}</td>` +
         `<td class="${chgCls}">${r.chg_pct == null ? "--" : r.chg_pct.toFixed(2)}</td>` +
         `<td>${sigHtml}</td><td class="muted">${r.date ? esc(r.date) : "--"}</td></tr>`;
@@ -2357,6 +2335,10 @@ $("#radRecipients").addEventListener("click", (event) => {
 $("#verSel").addEventListener("change", () => {
   state.version = $("#verSel").value;
   $("#verSel").title = VER_NOTES[state.version] || "切换指标版本";
+  radarConfig = null;
+  radarData = null;
+  stopRadarPoll();
+  if (radOverlay.style.display === "block") pollRadar();
   invalidateReports("指标版本已变化，请重新运行");
   recompute();
   if (btOverlay.style.display === "block") runBacktest();

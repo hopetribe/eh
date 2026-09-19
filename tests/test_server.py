@@ -285,7 +285,7 @@ def test_radar_email_settings_api_adds_recipient_without_exposing_credentials():
 
 def test_radar_snapshot_get_does_not_start_background_scan():
     class SnapshotOnlyService:
-        def snapshot(self, markets):
+        def snapshot(self, markets, config=None):
             return {"markets": {market: {"job": {"status": "idle"},
                                          "cache": None, "scanning": False,
                                          "stale": True}
@@ -301,3 +301,34 @@ def test_radar_snapshot_get_does_not_start_background_scan():
         assert list(json.loads(payload)["markets"]) == ["us"]
     finally:
         server_app.radar_engine.SERVICE = original
+def test_radar_config_query_and_scan_validation():
+    from unittest.mock import patch
+    with tempfile.TemporaryDirectory() as tmp, \
+         patch.object(server_app.radar_engine, "DATA_DIR", Path(tmp)):
+        status, _, payload = _serve_request("GET", "/api/radar?version=v3&signals=sSignal")
+        assert status == 200, payload
+        data = json.loads(payload)
+        assert data["config"] == {"version": "v3", "signals": ["sSignal"]}
+        assert not any(item["id"].startswith("stage") for item in data["signal_options"])
+        for path in ("/api/radar?version=bad", "/api/radar?version=v4&signals=stageSetup",
+                     "/api/radar?signals="):
+            assert _serve_request("GET", path)[0] == 400
+        for body in ({"version": "bad"}, {"signals": []}, {"market": "unknown"}):
+            status, _, _ = _serve_request("POST", "/api/radar/scan", json.dumps(body).encode(),
+                                         {"Content-Type": "application/json"})
+            assert status == 400
+def test_radar_scan_api_persists_and_captures_selected_version():
+    from unittest.mock import patch
+    with tempfile.TemporaryDirectory() as tmp, \
+         patch.object(server_app.radar_engine, "DATA_DIR", Path(tmp)), \
+         patch.object(server_app.radar_engine, "SERVICE", server_app.radar_engine.RadarService()), \
+         patch.object(server_app.radar_engine.RadarService, "_run") as run:
+        selected = {"version": "v3", "signals": ["sSignal"]}
+        status, _, payload = _serve_request("POST", "/api/radar/scan",
+            json.dumps({"market": "us", **selected}).encode(), {"Content-Type": "application/json"})
+        assert status == 200, payload
+        body = json.loads(payload)
+        assert body["config"] == selected and body["saved_config"] == selected
+        assert body["started"] == ["us"]
+        run.assert_called_once_with("us", selected)
+        assert json.loads((Path(tmp) / "radar_settings.json").read_text()) == selected

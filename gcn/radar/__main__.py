@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""机会雷达 CLI: 市值阈值股票池日K预热 / 每日扫描邮件守护。
+"""机会雷达 CLI: 市值 TOP 股票池日K预热 / 每日扫描邮件守护。
 
   python3 -m gcn.radar --market all          # 立即预热 (只刷陈旧/缺失)
   python3 -m gcn.radar --market us --force   # 强制全量刷新单市场

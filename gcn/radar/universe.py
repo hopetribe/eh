@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""机会雷达股票池: 按市场市值阈值覆盖全部标的。
+"""机会雷达股票池: 按市场市值排名选取 A股300 / 港股100 / 美股300。
 
 两级来源:
   1. 静态快照 (UNIVERSE, 按 2025 年中市值近似排序, 代码 -> 名称):
      无外部依赖, 始终可用; 仅在没有任何动态快照时作覆盖不完整的兜底;
   2. 动态快照: 优先使用 FutuOpenD get_stock_filter，离线时使用项目已有的
-     yfinance screener，均按总市值阈值分页获取全量标的并落盘缓存。
+     yfinance screener，均按总市值降序分页取 TOP N 并落盘缓存。
 
 get_universe(market) 统一入口, 返回 ([(代码, 名称), ...], 来源) 按市值降序。
 """
@@ -18,13 +18,9 @@ from pathlib import Path
 from gcn.data.service import DATA_DIR, _atomic_write_text, _opend_reachable
 
 # MARKET_VAL 由 Futu 按标的所属市场本币返回。
-MARKET_CAP_THRESHOLDS = {
-    "cn": 10_000_000_000.0,  # CNY, 100 亿
-    "hk": 10_000_000_000.0,  # HKD, 100 亿
-    "us": 5_000_000_000.0,   # USD, 50 亿
-}
+MARKET_TOP_N = {"cn": 300, "hk": 100, "us": 300}
 MARKET_CAP_CURRENCIES = {"cn": "CNY", "hk": "HKD", "us": "USD"}
-UNIVERSE_CACHE_SCHEMA = 3
+UNIVERSE_CACHE_SCHEMA = 4
 UNIVERSE_PAGE_SIZE = 200
 YAHOO_PAGE_SIZE = 250
 YAHOO_EXCHANGES = {
@@ -161,15 +157,16 @@ def _futu_market(market: str) -> list[str]:
     return {"cn": ["SH", "SZ"], "hk": ["HK"], "us": ["US"]}.get(market, [])
 
 
-def _fetch_futu_threshold(market: str,
-                          limit: int | None = None) -> list[tuple[str, str]] | None:
-    """按总市值阈值分页取全部标的 (失败返回 None, 由调用方降级)。"""
+def _fetch_futu_top(market: str,
+                    n: int | None = None) -> list[tuple[str, str]] | None:
+    """各交易所分页按市值取前 N，再合并去重排序。失败返回 None。"""
+    limit = n or MARKET_TOP_N[market]
     try:
         from futu import OpenQuoteContext, SimpleFilter, SortDir
         from futu.common.constant import StockField
     except ImportError:
         return None
-    threshold = MARKET_CAP_THRESHOLDS[market]
+    threshold = 1.0
     rows: list[tuple[float, str, str]] = []
     complete = True
     try:
@@ -182,6 +179,7 @@ def _fetch_futu_threshold(market: str,
                 flt.is_no_filter = False
                 flt.sort = SortDir.DESCEND
                 begin = 0
+                exchange_codes = set()
                 seen_pages: set[tuple[str, ...]] = set()
                 while True:
                     ret, payload = ctx.get_stock_filter(
@@ -205,7 +203,10 @@ def _fetch_futu_threshold(market: str,
                         val = float(getattr(rec, "market_val", 0.0) or 0.0)
                         if code and val >= threshold:
                             rows.append((val, code, name))
+                            exchange_codes.add(code)
                     begin += len(data)
+                    if len(exchange_codes) >= limit:
+                        break
                     if last_page:
                         if begin < int(all_count or 0):
                             complete = False
@@ -225,12 +226,7 @@ def _fetch_futu_threshold(market: str,
     ranked = sorted(((value, code, name) for code, (value, name) in best.items()),
                     key=lambda item: (-item[0], item[1]))
     result = [(code, name) for _, code, name in ranked]
-    return result[:limit] if limit is not None else result
-
-
-def _fetch_futu_top(market: str, n: int = 100) -> list[tuple[str, str]] | None:
-    """兼容旧调用: 在阈值股票池内按市值取前 n 只。"""
-    return _fetch_futu_threshold(market, limit=n)
+    return result[:limit]
 
 
 def _normalize_yahoo_code(market: str, symbol: str) -> str | None:
@@ -244,13 +240,14 @@ def _normalize_yahoo_code(market: str, symbol: str) -> str | None:
     return None
 
 
-def _fetch_yahoo_threshold(market: str) -> list[tuple[str, str]] | None:
-    """使用 yfinance 自定义 screener 分页获取阈值股票池。"""
+def _fetch_yahoo_top(market: str) -> list[tuple[str, str]] | None:
+    """使用 yfinance screener 按市值降序分页，取市场前 N 只股票。"""
     try:
         import yfinance as yf
     except ImportError:
         return None
-    threshold = MARKET_CAP_THRESHOLDS[market]
+    threshold = 1.0
+    limit = MARKET_TOP_N[market]
     try:
         query = yf.EquityQuery("and", [
             yf.EquityQuery("is-in", ["exchange", *YAHOO_EXCHANGES[market]]),
@@ -286,6 +283,8 @@ def _fetch_yahoo_threshold(market: str) -> list[tuple[str, str]] | None:
                 name = str(item.get("shortName") or item.get("longName") or code)
                 rows.append((value, code, name))
             offset += len(quotes)
+            if len({code for _, code, _ in rows}) >= limit:
+                break
             if len(quotes) < YAHOO_PAGE_SIZE:
                 if offset < expected_total:
                     complete = False
@@ -302,19 +301,16 @@ def _fetch_yahoo_threshold(market: str) -> list[tuple[str, str]] | None:
             best[code] = (value, name)
     ranked = sorted(((value, code, name) for code, (value, name) in best.items()),
                     key=lambda item: (-item[0], item[1]))
-    return [(code, name) for _, code, name in ranked]
+    return [(code, name) for _, code, name in ranked[:limit]]
 
 
-def _read_threshold_cache(market: str, allow_previous: bool = False) -> dict | None:
+def _read_top_cache(market: str) -> dict | None:
     try:
         blob = json.loads(_universe_cache_path(market).read_text(encoding="utf-8"))
         schema = blob.get("schema")
-        schema_matches = (
-            schema == UNIVERSE_CACHE_SCHEMA
-            or (allow_previous and schema == UNIVERSE_CACHE_SCHEMA - 1)
-        )
+        schema_matches = schema == UNIVERSE_CACHE_SCHEMA
         if (schema_matches
-                and float(blob.get("threshold", -1)) == MARKET_CAP_THRESHOLDS[market]
+                and blob.get("top_n") == MARKET_TOP_N[market]
                 and blob.get("list")):
             return blob
     except Exception:  # noqa: BLE001 - 缓存缺失/损坏/旧口径均重新生成
@@ -324,39 +320,38 @@ def _read_threshold_cache(market: str, allow_previous: bool = False) -> dict | N
 
 def get_universe(market: str, n: int | None = None,
                  use_cache: bool = True) -> tuple[list[tuple[str, str]], str]:
-    """返回 ([(代码, 名称)], 来源)，默认返回达到市值阈值的全部标的。
+    """返回 ([(代码, 名称)], 来源)，默认返回市场总市值前 N 只股票。
 
     来源为 futu / yahoo / dynamic-cache-stale / static-partial。动态源暂不可用时优先复用
-    最近一次同阈值快照，避免扫描覆盖面退回固定 Top100。
+    最近一次同排名口径快照，避免扫描覆盖面退回固定 Top100。
     """
     market = market if market in UNIVERSE else "us"
     cpath = _universe_cache_path(market)
-    cached = _read_threshold_cache(market) if use_cache else None
-    previous_cached = (_read_threshold_cache(market, allow_previous=True)
-                       if use_cache and not cached else None)
+    n = min(n, MARKET_TOP_N[market]) if n is not None else MARKET_TOP_N[market]
+    cached = _read_top_cache(market) if use_cache else None
     if cached and cached.get("day") == time.strftime("%Y-%m-%d"):
         items = [(x[0], x[1]) for x in cached["list"]]
         source = cached.get("provider") if cached.get("provider") in {"futu", "yahoo"} else "futu"
         return (items[:n] if n is not None else items), source
 
     provider = "futu"
-    dyn = _fetch_futu_threshold(market) if _opend_reachable() else None
+    dyn = _fetch_futu_top(market) if _opend_reachable() else None
     if not dyn:
         provider = "yahoo"
-        dyn = _fetch_yahoo_threshold(market)
+        dyn = _fetch_yahoo_top(market)
     if dyn:
         DATA_DIR.mkdir(exist_ok=True)
         _atomic_write_text(cpath, json.dumps(
             {"schema": UNIVERSE_CACHE_SCHEMA,
              "day": time.strftime("%Y-%m-%d"),
              "generated_at": time.time(),
-             "threshold": MARKET_CAP_THRESHOLDS[market],
+             "top_n": MARKET_TOP_N[market],
              "currency": MARKET_CAP_CURRENCIES[market],
              "provider": provider,
              "list": dyn}, ensure_ascii=False))
         return (dyn[:n] if n is not None else dyn), provider
 
-    fallback_cache = cached or previous_cached
+    fallback_cache = cached
     if fallback_cache:
         items = [(x[0], x[1]) for x in fallback_cache["list"]]
         return (items[:n] if n is not None else items), "dynamic-cache-stale"

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""机会雷达扫描引擎: 市值阈值股票池日K -> EHOPT10 指标 -> 近期信号。
+"""机会雷达扫描引擎: 市值 TOP 股票池日K -> EHOPT10 指标 -> 近期信号。
 
 设计
 ----
@@ -22,18 +22,16 @@ import pandas as pd
 from gcn.data.service import (DATA_DIR, DEFAULT_COUNT, _cache_is_fresh,
                               _cache_path, _load_cache, _atomic_write_text,
                               fetch_quote)
-from gcn.radar.universe import (MARKET_CAP_CURRENCIES, MARKET_CAP_THRESHOLDS,
+from gcn.radar.universe import (MARKET_CAP_CURRENCIES, MARKET_TOP_N,
                                 RADAR_MARKETS, UNIVERSE_CACHE_SCHEMA,
                                 get_universe)
 from gcn.recipes.gcn_main import compute_ehopt10
+from gcn.radar.config import SIGNALS, normalize_config, signal_options
 
-FETCH_COUNT = 300     # 每标的拉取的日K数量 (指标预热充足)
+FETCH_COUNT = DEFAULT_COUNT  # 与主图使用相同历史长度，避免递归指标预热偏差
 SCAN_WORKERS = 6      # 并发扫描线程数 (兼顾速度与数据源限流)
 SIGNAL_HISTORY = 15   # 每标的记录最近 N 根K线内的信号 (覆盖 近3日/1周/2周)
 CACHE_TTL = 26 * 3600  # 每日扫描结果跨过下一个 09:00 前保持有效
-
-# 关注的信号列 -> 展示名 (与 webui SIG_TYPES 徽章一致)
-SIGNAL_DEFS = [("B_SIGNAL", "B买"), ("ICON_JUEFAN", "绝反")]
 
 MARKETS = [m for m, _ in RADAR_MARKETS]
 
@@ -41,8 +39,8 @@ MARKETS = [m for m, _ in RADAR_MARKETS]
 # ============================ 单标的扫描 ============================
 
 def _extract_recent(res: pd.DataFrame, max_days: int = SIGNAL_HISTORY,
-                    as_of=None) -> list[dict]:
-    """提取最近 max_days 根K线内的 B买/绝反 信号。
+                    as_of=None, config=None) -> list[dict]:
+    """提取最近 max_days 根K线内的所选信号。
 
     返回 [{type, date, days_ago, close}], 按时间新 -> 旧。
     纯函数, 便于离线测试。
@@ -52,8 +50,17 @@ def _extract_recent(res: pd.DataFrame, max_days: int = SIGNAL_HISTORY,
     reference = pd.Timestamp.now().normalize() if as_of is None else pd.Timestamp(as_of).normalize()
     if reference.tzinfo is not None:
         reference = reference.tz_localize(None)
-    cols = {label: np.asarray(res[col], dtype=bool) for col, label in SIGNAL_DEFS
-            if col in res.columns}
+    config = normalize_config(config)
+    cols = {}
+    for key in config["signals"]:
+        label, *columns = SIGNALS[key]
+        col = next((c for c in columns if c in res.columns), None)
+        if col:
+            values = res[col].fillna(False).to_numpy(dtype=bool)
+            # v5 的确认和 B买是同一事件，同时勾选时不重复列出。
+            if key == "stageEntry" and "bSignal" in config["signals"] and "B_SIGNAL" in res:
+                values = values & ~res["B_SIGNAL"].fillna(False).to_numpy(dtype=bool)
+            cols[label] = values
     for i in range(max(0, n - max_days), n):
         for label, col in cols.items():
             if col[i]:
@@ -73,19 +80,22 @@ def _extract_recent(res: pd.DataFrame, max_days: int = SIGNAL_HISTORY,
 
 
 def scan_symbol(code: str, market: str, name: str = "",
-                count: int = FETCH_COUNT) -> dict:
+                count: int = FETCH_COUNT, config=None) -> dict:
     """扫描单只标的: 拉日K(带缓存) -> 计算指标 -> 提取近期信号。
 
     拉取用与主图一致的 DEFAULT_COUNT (保证落盘缓存为全量历史, 主图
-    不受影响), 计算只取最近 count 根 (指标预热充足)。
+    不受影响), 计算默认使用同样的全量历史与默认策略参数。
     """
     try:
+        config = normalize_config(config)
         quote = fetch_quote(code, "1d", DEFAULT_COUNT)
+        if quote.get("refresh_failed"):
+            raise RuntimeError(quote.get("note") or "行情刷新失败")
         rows = quote["rows"][-count:]
         df = pd.DataFrame([r[1:] for r in rows],
                           columns=["open", "high", "low", "close", "volume"],
                           index=pd.to_datetime([r[0] for r in rows], format="mixed"))
-        res = compute_ehopt10(df, version="v4")
+        res = compute_ehopt10(df, version=config["version"])
         close = float(res["CLOSE"].iloc[-1])
         prev = float(res["CLOSE"].iloc[-2]) if len(res) > 1 else float("nan")
         return {
@@ -95,7 +105,7 @@ def scan_symbol(code: str, market: str, name: str = "",
             "close": round(close, 4),
             "chg_pct": (round((close / prev - 1) * 100, 2)
                         if np.isfinite(prev) and prev else None),
-            "signals": _extract_recent(res),
+            "signals": _extract_recent(res, config=config),
             "error": None,
         }
     except Exception as exc:  # noqa: BLE001 - 单只失败不阻断整体扫描
@@ -105,12 +115,13 @@ def scan_symbol(code: str, market: str, name: str = "",
 
 
 def scan_market(market: str, progress=None,
-                max_workers: int = SCAN_WORKERS) -> dict:
+                max_workers: int = SCAN_WORKERS, config=None) -> dict:
     """并发扫描一个市场全部标的, 返回结果块 (只保留有信号的命中项)。"""
+    config = normalize_config(config)
     universe, src = get_universe(market)
     results: list[dict] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futs = [pool.submit(scan_symbol, c, market, n) for c, n in universe]
+        futs = [pool.submit(scan_symbol, c, market, n, config=config) for c, n in universe]
         for i, fut in enumerate(as_completed(futs), 1):
             results.append(fut.result())
             if progress:
@@ -122,10 +133,11 @@ def scan_market(market: str, progress=None,
     hits.sort(key=lambda r: (min(s["days_ago"] for s in r["signals"]), r["code"]))
     return {
         "market": market,
+        "config": config,
         "universe_source": src,
-        "universe_complete": src != "static-partial",
+        "universe_complete": src in {"futu", "yahoo"} and len(universe) == MARKET_TOP_N[market],
         "universe_schema": UNIVERSE_CACHE_SCHEMA,
-        "market_cap_threshold": MARKET_CAP_THRESHOLDS[market],
+        "top_n": MARKET_TOP_N[market],
         "market_cap_currency": MARKET_CAP_CURRENCIES[market],
         "n_scanned": len(results),
         "n_errors": sum(1 for r in results if r.get("error")),
@@ -163,22 +175,35 @@ class RadarService:
         self.jobs: dict[str, dict] = {}  # market -> {status, done, total, error}
 
     # ---- 状态视图 ----
-    def _block_view(self, market: str) -> dict:
+    def get_config(self):
+        try:
+            return normalize_config(json.loads(
+                (DATA_DIR / "radar_settings.json").read_text(encoding="utf-8")))
+        except (OSError, ValueError, TypeError):
+            return normalize_config()
+
+    def _block_view(self, market: str, config=None) -> dict:
+        config = normalize_config(config or self.get_config())
         cache = load_cache(market)
+        if cache and (cache.get("config") != config
+                      or cache.get("universe_schema") != UNIVERSE_CACHE_SCHEMA):
+            cache = None
         stale = (cache is None
                  or cache.get("universe_schema") != UNIVERSE_CACHE_SCHEMA
                  or time.time() - cache.get("generated_at", 0) > CACHE_TTL)
         return {"cache": cache, "stale": stale}
 
-    def snapshot(self, markets: list[str] | None = None) -> dict:
+    def snapshot(self, markets: list[str] | None = None, config=None) -> dict:
         """当前各市场状态: 扫描进度 + 缓存结果 (可能过期, 标记 stale)。"""
         markets = markets or MARKETS
+        config = normalize_config(config or self.get_config())
         with self._mu:
             jobs = {m: dict(self.jobs.get(m) or {"status": "idle"})
                     for m in markets}
-        out = {"markets": {}}
+        out = {"markets": {}, "config": config, "saved_config": self.get_config(),
+               "signal_options": signal_options(config["version"])}
         for m in markets:
-            view = self._block_view(m)
+            view = self._block_view(m, config)
             job = jobs[m]
             scanning = job.get("status") == "scanning"
             if job.get("status") == "error":
@@ -190,7 +215,7 @@ class RadarService:
         return out
 
     # ---- 扫描调度 ----
-    def _run(self, market: str):
+    def _run(self, market: str, config):
         def progress(done, total):
             with self._mu:
                 job = self.jobs.get(market)
@@ -198,14 +223,16 @@ class RadarService:
                     job.update(done=done, total=total)
 
         try:
-            block = scan_market(market, progress=progress)
+            block = scan_market(market, progress=progress, config=config)
+            block["config"] = config
             if block.get("n_scanned", 0) <= 0 \
                     or block.get("n_errors", 0) >= block.get("n_scanned", 0):
                 raise RuntimeError("全市场扫描无成功结果，保留上一版缓存")
             previous = load_cache(market)
             failed = set(block.get("failed_codes") or [])
             current_codes = {item.get("code") for item in block.get("results", [])}
-            if previous and failed:
+            if (previous and failed and previous.get("config") == config
+                    and previous.get("universe_schema") == UNIVERSE_CACHE_SCHEMA):
                 today = pd.Timestamp.now().normalize().date()
                 for old in previous.get("results", []):
                     if old.get("code") not in failed or old.get("code") in current_codes:
@@ -238,18 +265,26 @@ class RadarService:
                 self.jobs[market] = {"status": "error",
                                      "error": f"{type(exc).__name__}: {exc}"}
 
-    def start_scan(self, markets: list[str]) -> list[str]:
+    def start_scan(self, markets: list[str], config=None) -> list[str]:
         """对指定市场启动后台强制扫描, 返回实际启动的市场。"""
         started = []
         with self._mu:
+            selected = normalize_config(config or self.get_config())
+            if any(job.get("status") == "scanning" and job.get("config") != selected
+                   for job in self.jobs.values()):
+                raise ValueError("其他配置的扫描仍在运行，请完成后再切换配置")
+            if config is not None:
+                DATA_DIR.mkdir(exist_ok=True)
+                _atomic_write_text(DATA_DIR / "radar_settings.json",
+                                   json.dumps(selected, ensure_ascii=False))
             for m in markets:
                 if m not in MARKETS:
                     continue
                 job = self.jobs.get(m) or {}
                 if job.get("status") == "scanning":
                     continue
-                self.jobs[m] = {"status": "scanning", "done": 0, "total": 0}
-                threading.Thread(target=self._run, args=(m,), daemon=True).start()
+                self.jobs[m] = {"status": "scanning", "done": 0, "total": 0, "config": selected}
+                threading.Thread(target=self._run, args=(m, selected), daemon=True).start()
                 started.append(m)
         return started
 
@@ -266,7 +301,7 @@ SERVICE = RadarService()
 
 
 # ============================ 日K预热守护 ============================
-# 目标: 三大市场达到市值阈值的全部标的日K数据常驻本地 (覆盖最近半年以上, 实际存
+# 目标: 三大市场按市值 TOP N 选取的标的日K数据常驻本地 (覆盖最近半年以上, 实际存
 # 全量合并历史), 每天增量更新一次 —— 复用 fetch_quote 的合并落盘与新鲜度
 # 规则 (当日已刷新过 / 已有今日K线 / 未错失交易日, 则零网络请求)。
 
@@ -328,9 +363,9 @@ def warm_market(market: str, force: bool = False,
                 n_fail += 1
                 failed.append(code)
     stats = {"market": market, "universe_source": src,
-             "universe_complete": src != "static-partial",
+             "universe_complete": src in {"futu", "yahoo"} and len(universe) == MARKET_TOP_N[market],
              "universe_schema": UNIVERSE_CACHE_SCHEMA,
-             "market_cap_threshold": MARKET_CAP_THRESHOLDS[market],
+             "top_n": MARKET_TOP_N[market],
              "market_cap_currency": MARKET_CAP_CURRENCIES[market],
              "n_total": len(universe),
              "n_targets": len(targets), "n_ok": n_ok, "n_failed": n_fail,
@@ -345,7 +380,7 @@ def warm_market(market: str, force: bool = False,
 def warm_loop(markets: list[str] | None = None, tick: int = WARM_TICK):
     """常驻守护: 每小时巡检各市场, 陈旧标的增量补数 (每日每标的至多一次)。"""
     markets = markets or MARKETS
-    print(f"[radar-warm] 守护已启动: {'/'.join(markets)} 市值阈值股票池, "
+    print(f"[radar-warm] 守护已启动: {'/'.join(markets)} 市值 TOP 股票池, "
           f"每 {tick // 60} 分钟巡检, 陈旧才增量请求")
     while True:
         for m in markets:

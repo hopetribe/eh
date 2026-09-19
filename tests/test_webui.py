@@ -88,9 +88,7 @@ def test_webui_mobile_drawer_and_controls_remain_accessible():
     assert "side.focus()" in script
     assert 'document.body.classList.contains("sidebar-open")' in script
     assert '!dialogReturnFocus.closest("[inert]")' in script
-    for label in ("SD 数值", "SD 滑块", "WIDTH 数值", "WIDTH 滑块",
-                  "N 数值", "N 滑块", "OFFSET 数值", "OFFSET 滑块",
-                  "选股策略", "选股市场", "自定义候选池", "回测周期",
+    for label in ("选股策略", "选股市场", "自定义候选池", "回测周期",
                   "单边成本百分比", "最长持有K线"):
         assert f'aria-label="{label}"' in INDEX
     assert 'id="scrStatus" role="status"' in INDEX
@@ -276,7 +274,9 @@ def test_webui_radar_email_settings_are_accessible_and_escaped():
     assert '${esc(email)}' in script
     assert 'input.reportValidity()' in script
     assert 'updateRadarRecipient("remove", button.dataset.email)' in script
-    assert "A股/港股 &gt; 100亿" in INDEX
+    assert "A股市值 TOP300 · 港股市值 TOP100 · 美股市值 TOP300" in INDEX
+    assert 'id="paramSec"' not in INDEX
+    assert 'id="radSignals"' in INDEX
 
 
 def test_webui_screener_meta_requires_semantically_valid_nonempty_strategies():

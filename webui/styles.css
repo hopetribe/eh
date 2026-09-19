@@ -1775,3 +1775,6 @@ details.collapse[open] .parameter-body {
     transition-duration: .01ms !important;
   }
 }
+.rad-signal-config { border: 1px solid var(--border, #293746); border-radius: 10px; padding: 12px; margin: 12px 0; min-width: 0; }
+.rad-signal-config .rad-row { flex-wrap: wrap; gap: 12px 18px; }
+.rad-signal-config label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; white-space: nowrap; }

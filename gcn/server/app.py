@@ -356,7 +356,13 @@ class UiHandler(BaseHTTPRequestHandler):
                     "universes": SCREENER_UNIVERSE,
                 })
             elif path == "/api/radar":
-                self._send_json(radar_engine.SERVICE.snapshot(_parse_markets(query)))
+                config = None
+                options = urllib.parse.parse_qs(query, keep_blank_values=True)
+                if "version" in options or "signals" in options:
+                    config = {"version": options.get("version", ["v5"])[0]}
+                    if "signals" in options:
+                        config["signals"] = options["signals"][0].split(",")
+                self._send_json(radar_engine.SERVICE.snapshot(_parse_markets(query), config))
             elif path == "/api/radar/email":
                 self._send_json(radar_emailer.get_email_settings())
             elif path == "/favicon.ico":
@@ -429,8 +435,9 @@ class UiHandler(BaseHTTPRequestHandler):
                            else [])
                 if not markets:
                     raise ValueError(f"未知市场: {market}")
-                started = radar_engine.SERVICE.start_scan(markets)
-                snap = radar_engine.SERVICE.snapshot(markets)
+                config = {k: req[k] for k in ("version", "signals") if k in req} or None
+                started = radar_engine.SERVICE.start_scan(markets, config)
+                snap = radar_engine.SERVICE.snapshot(markets, config)
                 snap["started"] = started
                 self._send_json(snap)
                 return
@@ -583,7 +590,7 @@ def main():
     else:
         print(f"K线本地缓存目录: {DATA_DIR}  (每日自动刷新已开启)")
         threading.Thread(target=_auto_refresh_loop, daemon=True).start()
-        # 机会雷达: 阈值股票池日K每小时增量巡检; 每天 09:00 扫描并发送邮件
+        # 机会雷达: 市值 TOP 股票池日K每小时增量巡检; 每天 09:00 扫描并发送邮件
         threading.Thread(target=radar_engine.warm_loop, daemon=True).start()
         threading.Thread(target=radar_scheduler.daily_radar_loop, daemon=True).start()
     if not args.no_browser:

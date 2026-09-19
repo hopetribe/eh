@@ -2,6 +2,8 @@
 """机会雷达邮件配置、报告生成与 SMTP 投递。"""
 from __future__ import annotations
 
+from gcn.radar.config import SIGNALS
+
 import html
 import json
 import os
@@ -153,7 +155,10 @@ def build_report(snapshot: dict, now=None,
     day = stamp.strftime("%Y-%m-%d")
     rows = _market_rows(snapshot, window=window)
     subject = f"[GCN机会雷达] {day} 扫描结果 · {len(rows)} 个标的命中"
-    lines = [f"GCN 机会雷达 · {day}", f"窗口：近 {window} 个交易日", ""]
+    config = snapshot.get("config") or {}
+    config_label = ("GCN " + str(config.get("version", "未记录")) + " · " +
+                    " / ".join(SIGNALS[key][0] for key in config.get("signals", []) if key in SIGNALS))
+    lines = [f"GCN 机会雷达 · {day}", config_label, f"窗口：近 {window} 个交易日", ""]
     summaries = []
     for market in ("us", "hk", "cn"):
         state = (snapshot.get("markets") or {}).get(market) or {}
@@ -167,7 +172,7 @@ def build_report(snapshot: dict, now=None,
     lines.extend(summaries)
     lines.extend(["", "近期信号："])
     if not rows:
-        lines.append("无 B买 / 绝反 信号。")
+        lines.append("无所选信号。")
     for item in rows:
         sigs = "；".join(f"{sig.get('type', '--')} {sig.get('date', '--')}"
                          for sig in item["signals"])
@@ -239,7 +244,7 @@ def build_report(snapshot: dict, now=None,
     else:
         results_html = (
             "<div style=\"padding:22px 16px;color:#64748b;font-size:13px;text-align:center;background:#f8fafc;"
-            "border:1px solid #e2e8f0;border-radius:10px\">近期开窗内无 B买 / 绝反 信号。</div>"
+            "border:1px solid #e2e8f0;border-radius:10px\">近期开窗内无所选信号。</div>"
         )
     html_body = (
         "<!doctype html><html lang=\"zh-CN\"><head>"
@@ -269,7 +274,7 @@ def build_report(snapshot: dict, now=None,
         "<div style=\"margin:0 0 10px;color:#334155;font-size:14px;font-weight:700\">近期信号</div>"
         f"{results_html}"
         "<div style=\"margin-top:20px;padding-top:14px;color:#64748b;font-size:11px;line-height:1.6;border-top:1px solid #e2e8f0\">"
-        "信号为 EHOPT10 v4 口径，T 日收盘确认。该邮件为自动扫描摘要，请结合主图和风险管理规则使用。"
+        f"信号配置：{html.escape(config_label)}。日K未收盘信号可能变化。该邮件为自动扫描摘要，请结合主图和风险管理规则使用。"
         "</div></td></tr></table></td></tr></table></body></html>"
     )
     return subject, text_body, html_body

@@ -58,7 +58,7 @@ def _send_email_with_retry(snapshot: dict, recipients: list[str]) -> list[str]:
 
 
 def run_daily_radar(markets: list[str] | None = None, service=None) -> dict:
-    """预热阈值股票池、完成三市场扫描并投递一封汇总邮件。"""
+    """预热市值 TOP 股票池、完成三市场扫描并投递一封汇总邮件。"""
     markets = markets or list(engine.MARKETS)
     service = service or engine.SERVICE
     for market in markets:
