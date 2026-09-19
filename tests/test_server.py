@@ -332,3 +332,20 @@ def test_radar_scan_api_persists_and_captures_selected_version():
         assert body["started"] == ["us"]
         run.assert_called_once_with("us", selected)
         assert json.loads((Path(tmp) / "radar_settings.json").read_text()) == selected
+def test_screener_all_strategies_return_json_with_missing_fundamentals():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from gcn.screener import engine, strategies
+    for strategy in strategies.STRATEGIES:
+        with patch.object(engine.fundamentals, "compute_metrics", return_value={"market_cap": math.nan}), \
+             patch.object(engine, "time", SimpleNamespace(sleep=lambda seconds: None)):
+            body = json.dumps({"strategy": strategy, "symbols": "AAPL,MSFT"}).encode()
+            status, _, payload = _serve_request("POST", "/api/screener", body,
+                                              {"Content-Type": "application/json"})
+        assert status == 200, (strategy, payload)
+        result = json.loads(payload)
+        assert result["strategy"] == strategy and result["n_passed"] == 0
+        assert len(result["results"]) == 2
+        assert all(row["market_cap_cny"] is None and row["data_status"] == "incomplete"
+                   for row in result["results"])
+        assert b"NaN" not in payload and b"Infinity" not in payload

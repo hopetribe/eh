@@ -1983,16 +1983,25 @@ async function runScreenJob() {
       body: JSON.stringify(body),
       signal: request.signal,
     });
+    const contentType = r.headers.get("Content-Type") || "";
+    if (!contentType.includes("application/json")) {
+      throw new Error(`服务响应异常（HTTP ${r.status}），请稍后重试或减少候选股票数量`);
+    }
     const d = await r.json();
     if (!isCurrentRequest(request)) return;
-    if (d.error) throw new Error(d.error);
+    if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
     if (!Array.isArray(d.results)) throw new Error("选股响应格式无效");
     renderScreen(d);
-    $("#scrStatus").textContent = `通过 ${d.n_passed}/${d.results.length} · ${d.results.length} 只候选`;
+    const incomplete = d.results.filter((row) => row.data_status === "incomplete").length;
+    const errors = d.results.filter((row) => row.data_status === "error").length;
+    $("#scrStatus").textContent = `通过 ${d.n_passed}/${d.results.length} · ${d.results.length} 只候选` +
+      (incomplete ? ` · 数据不足 ${incomplete} 只` : "") +
+      (errors ? ` · 获取/评估失败 ${errors} 只` : "");
   } catch (e) {
     if (isAbortError(e) || !isCurrentRequest(request)) return;
-    $("#scrStatus").textContent = "选股失败";
-    toast("选股失败: " + (e.message || e));
+    const message = "选股失败: " + (e.message || e);
+    $("#scrStatus").textContent = message;
+    toast(message);
   } finally {
     finishRequest(request);
   }
@@ -2005,9 +2014,11 @@ function renderScreen(d) {
   html += '<table><tr><th>代码</th><th>名称</th><th>市值(亿CNY)</th><th>通过条件</th><th>结论</th></tr>';
   for (const r of rows) {
     const mc = r.market_cap_cny ? (r.market_cap_cny / 1e8).toFixed(0) : "--";
+    const conclusion = r.data_status === "error" ? "获取/评估失败" :
+      (r.passed ? "✓ 通过" : "✗ 未通过") + (r.data_status === "incomplete" ? "（数据不足）" : "");
     html += `<tr><td>${esc(r.symbol)}</td><td style="text-align:left">${esc(r.name) || "--"}</td>` +
       `<td>${mc}</td><td>${r.n_ok ?? 0}/${r.n_total ?? 0}</td>` +
-      `<td class="${r.passed ? "pass" : "fail"}">${r.passed ? "✓ 通过" : "✗"}</td></tr>`;
+      `<td class="${r.passed ? "pass" : "fail"}">${conclusion}</td></tr>`;
   }
   html += "</table>";
   html += '<div class="sec-h">逐条件明细</div>';

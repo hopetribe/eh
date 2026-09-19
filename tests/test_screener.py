@@ -51,6 +51,28 @@ def test_global_mktcap_floor():
     assert STRATEGIES["growth"]["min_mktcap_cny"] == 100e8
 
 
+def test_all_strategies_missing_values_are_json_safe_and_not_passed():
+    import json
+    import numpy as np
+    from unittest.mock import patch
+    from gcn.screener import engine
+    for strategy_id, strategy in STRATEGIES.items():
+        for missing in (None, float("nan"), float("inf"), -float("inf"), np.float32("nan")):
+            metrics = {"market_cap": missing, "name": missing}
+            for condition in strategy["conditions"]:
+                metrics[condition["field"]] = ([missing] * condition.get("need", 3)
+                    if condition["op"].startswith("yearly_") else missing)
+            with patch.object(engine.fundamentals, "compute_metrics", return_value=metrics):
+                result = evaluate_symbol("AAPL", strategy_id)
+            json.dumps(result, allow_nan=False)
+            assert result["market_cap_cny"] is None
+            assert result["name"] == "AAPL"
+            assert result["passed"] is False and result["n_ok"] == 0
+            assert result["data_status"] == "incomplete"
+            assert "数据不足" in result["note"]
+            assert all(not condition["passed"] for condition in result["conditions"])
+
+
 def test_neff_market_cap_condition_receives_converted_value():
     import gcn.screener.engine as engine
     old = engine.fundamentals.compute_metrics
@@ -129,3 +151,73 @@ def test_historical_pe_percentile_uses_period_eps_not_latest_eps_constant():
     px = pd.DataFrame({"close": [10, 20, 30, 40, 50]}, index=years)
     eps = pd.Series([10, 2, 3, 4, 1], index=years[::-1])  # descending report order
     assert _historical_pe_percentile(px, eps, current_pe=5.0) == 0.0
+def _passing_metrics(strategy):
+    metrics = {"market_cap": 1e12, "currency": "CNY", "name": "有效样本"}
+    for condition in strategy["conditions"]:
+        field, op, value = condition["field"], condition["op"], condition["value"]
+        if op.startswith("yearly_"):
+            metrics[field] = [value + 1 if op == "yearly_gt" else value - 1] * condition.get("need", 3)
+        elif op == "between":
+            metrics[field] = sum(value) / 2
+        else:
+            metrics[field] = value + 1 if op == ">" else value / 2
+    return metrics
+
+
+def test_all_strategies_valid_data_and_each_condition_failure():
+    import json
+    from unittest.mock import patch
+    from gcn.screener import engine
+    for strategy_id, strategy in STRATEGIES.items():
+        metrics = _passing_metrics(strategy)
+        with patch.object(engine.fundamentals, "compute_metrics", side_effect=lambda *a, **kw: metrics.copy()):
+            result = evaluate_symbol("GOOD", strategy_id)
+            json.dumps(result, allow_nan=False)
+            assert result["passed"] and result["data_status"] == "complete", strategy_id
+            assert result["n_ok"] == result["n_total"]
+            for condition in strategy["conditions"]:
+                if condition["field"] == "market_cap_cny":
+                    continue
+                original = metrics[condition["field"]]
+                value = condition["value"]
+                if condition["op"].startswith("yearly_"):
+                    metrics[condition["field"]] = [value] * condition.get("need", 3)
+                elif condition["op"] == "between":
+                    metrics[condition["field"]] = value[1] + 1
+                else:
+                    metrics[condition["field"]] = value
+                failed = evaluate_symbol("BAD", strategy_id)
+                assert not failed["passed"] and failed["n_ok"] == failed["n_total"] - 1, (strategy_id, condition)
+                metrics[condition["field"]] = original
+            metrics["market_cap"] = strategy["min_mktcap_cny"]
+            assert not evaluate_symbol("SMALL", strategy_id)["passed"]  # 严格 > 边界
+
+
+def test_yearly_invalid_entry_cannot_pass_or_pull_in_older_year():
+    cond = {"text": "年限", "field": "roe", "op": "yearly_gt", "value": 0.1, "need": 3}
+    result = _eval_condition(cond, {"roe": [0.2, None, 0.3, 0.4]})
+    assert result["passed"] is False and "2/3" in result["note"]
+    assert result["value"] == "2/2年达标"
+
+
+def test_all_strategies_isolate_provider_and_evaluation_failures():
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from gcn.screener import engine
+    for strategy_id, strategy in STRATEGIES.items():
+        def compute(symbol, **kwargs):
+            if symbol == "OFFLINE":
+                raise RuntimeError("模拟数据源故障")
+            if symbol == "INVALID":
+                return object()  # 获取成功但评估阶段遇到异常也不应中断整批
+            if symbol == "MISSING":
+                return {"market_cap": float("nan")}
+            return _passing_metrics(strategy)
+        with patch.object(engine.fundamentals, "compute_metrics", side_effect=compute), \
+             patch.object(engine, "time", SimpleNamespace(sleep=lambda seconds: None)):
+            results = engine.run_screen(["OFFLINE", "INVALID", "MISSING", "GOOD"], strategy_id, log=False)
+        json.dumps(results, allow_nan=False)
+        assert len(results) == 4 and results[0]["symbol"] == "GOOD" and results[0]["passed"]
+        assert {row["symbol"] for row in results if row["data_status"] == "error"} == {"OFFLINE", "INVALID"}
+        assert next(row for row in results if row["symbol"] == "MISSING")["market_cap_cny"] is None

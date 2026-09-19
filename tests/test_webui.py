@@ -291,3 +291,13 @@ def test_webui_screener_meta_requires_semantically_valid_nonempty_strategies():
     assert "name === strategy.name" in meta
     assert "Number.isInteger(strategy.n_conditions)" in meta
     assert "Number.isFinite(strategy.min_mktcap_cny)" in meta
+def test_webui_screener_keeps_error_details_and_data_quality_visible():
+    script = _inline_script()
+    job = script[script.index("async function runScreenJob"):
+                 script.index("function renderScreen")]
+    assert '$("#scrStatus").textContent = message' in job
+    assert '$("#scrStatus").textContent = "选股失败"' not in job
+    assert '!r.ok || d.error' in job
+    assert 'contentType.includes("application/json")' in job
+    assert 'row.data_status === "incomplete"' in job
+    assert 'row.data_status === "error"' in job
