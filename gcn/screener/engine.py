@@ -98,8 +98,18 @@ def evaluate_symbol(symbol: str, strategy_id: str, count: int = 1300) -> dict:
         mcap_pass = mc_cny is not None and mc_cny > floor
         mcap_note = "" if mc_cny is not None else "市值数据缺失或无效"
 
-        conds = [_eval_condition(c, m) for c in strat["conditions"]
-                 if c.get("field") != "market_cap_cny"]
+        selected = [c for c in strat["conditions"] if c.get("field") != "market_cap_cny"]
+        conds = [_eval_condition(c, m) for c in selected]
+        source = m.get("_source", {})
+        if source.get("source") == "SEC EDGAR":
+            for definition, result in zip(selected, conds):
+                result["text"] = result["text"].replace("TTM", "年报估算")
+                field = definition["field"]
+                if field == "eps_cagr_10y":
+                    result["note"] = "; ".join(filter(None, [result["note"],
+                        "按可比年报评估：" + m.get("_coverage", {}).get(field, "不足")]))
+                if field in ("pe_avg_3y", "pe_pct_5y", "double_play_multiplier", "div_yield_yearly"):
+                    result["note"] = "SEC 与历史行情复权口径未核验，不用于判定"
         conds.append({"text": f"总市值 > {floor / 1e8:.0f} 亿元", "value": mc_cny,
                       "threshold": floor, "passed": mcap_pass, "note": mcap_note})
         all_pass = all(c["passed"] for c in conds)
@@ -110,6 +120,7 @@ def evaluate_symbol(symbol: str, strategy_id: str, count: int = 1300) -> dict:
                 "name": name if isinstance(name, str) and name else symbol,
                 "market_cap_cny": mc_cny, "passed": bool(all_pass and mcap_pass),
                 "n_ok": n_ok, "n_total": len(conds), "conditions": conds,
+                "data_source": source,
                 "data_status": "incomplete" if incomplete else "complete",
                 "note": f"数据不足（{incomplete} 项条件缺失或覆盖不足）" if incomplete else ""}
     except Exception as e:  # noqa: BLE001

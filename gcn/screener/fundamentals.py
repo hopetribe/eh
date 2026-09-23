@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
 """基本面指标适配层: 行情源基本面 + 三大报表 -> 选股结构化字段。
 
-稳定性设计: yfinance 的 info 快照常被限流返回空, 因此所有快照字段均有
-"报表 + 行情" 回填路径 (价格x股本=市值, 价格/EPS=PE 等), 保证限流时选股
-依旧可用。数据不足的字段记为 None 并在 _coverage 标注实际覆盖年数。
+Yahoo 不可用时美股回退 SEC 官方年报。SEC 估值使用年报
+口径并显式披露，不冒充 TTM；无法核验的历史复权相关字段保持缺失。
 """
 from __future__ import annotations
-
-import time
 
 import numpy as np
 import pandas as pd
 
 from gcn.data.service import fetch_quote
+from gcn.screener import sec
 
 K_NET_INCOME = ("NetIncome", "Net Income")
 K_REVENUE = ("TotalRevenue", "Total Revenue")
@@ -59,12 +57,9 @@ def _cagr(first, last, years):
 def _gross_margin_history(revenue: pd.Series, gross_profit: pd.Series,
                           years: int = 3) -> list[float]:
     values = []
-    for col in revenue.index:
-        if col in gross_profit.index:
-            ratio = _div(gross_profit[col], revenue[col])
-            if np.isfinite(ratio):
-                values.append(float(ratio))
-    return values[:years]
+    for col in revenue.index[:years]:
+        values.append(float(_div(gross_profit.get(col, np.nan), revenue[col])))
+    return values
 
 
 def _completed_dividend_yields(dividends: pd.Series, prices: pd.DataFrame,
@@ -133,61 +128,99 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     """计算某标的的全量基本面结构化字段 (见 docs/选股策略-条件清单.md)。"""
     import yfinance as yf
 
+    sec_data, source_error = None, ""
     t = yf.Ticker(symbol)
     info, inc, bs, cf = {}, pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
     def _stmt(fn):
         df = fn()
-        return df if isinstance(df, pd.DataFrame) and not df.empty else pd.DataFrame()
+        return df if isinstance(df, pd.DataFrame) and df.notna().to_numpy().any() else pd.DataFrame()
 
-    for attempt in range(2):  # 限流重试
+    errors = []
+    # Independent calls: a blocked quote-summary must not suppress statements.
+    try:
+        info = t.info or {}
+    except Exception as exc:
+        errors.append(type(exc).__name__)
+    statements = []
+    for fn in (t.get_income_stmt, t.get_balance_sheet, t.get_cash_flow):
         try:
-            info = t.info or {}
-            inc = _stmt(t.get_income_stmt)
-            bs = _stmt(t.get_balance_sheet)
-            cf = _stmt(t.get_cash_flow)
-            if info and (len(inc) or len(bs)):
-                break
-            time.sleep(2)
-        except Exception:
-            if attempt:
-                raise
-            time.sleep(2)
+            statements.append(_stmt(fn))
+        except Exception as exc:
+            errors.append(type(exc).__name__)
+            statements.append(pd.DataFrame())
+    inc, bs, cf = statements
+    if (inc.empty or bs.empty or cf.empty) and not symbol.endswith((".HK", ".SS", ".SZ")):
+        try:
+            sec_data = sec.fetch_statements(symbol)
+            info, inc, bs, cf = (sec_data[k] for k in ("info", "income", "balance", "cashflow"))
+            t = None
+        except Exception as exc:
+            source_error = f"SEC 不可用: {str(exc) if isinstance(exc, ValueError) else type(exc).__name__}"
+    has_snapshot = any(np.isfinite(_div(info.get(k), 1)) for k in
+                       ("marketCap", "trailingPE", "priceToBook", "returnOnEquity", "freeCashflow"))
+    if not has_snapshot and inc.empty and bs.empty and cf.empty:
+        raise RuntimeError(f"财报源未返回数据；{source_error}；Yahoo: " +
+                           (", ".join(sorted(set(errors))) or "空响应/可能限流"))
 
-    m: dict = {"symbol": symbol, "currency": info.get("currency", "USD"),
+    currency = "HKD" if symbol.endswith(".HK") else "CNY" if symbol.endswith((".SS", ".SZ")) else "USD"
+    m: dict = {"symbol": symbol, "currency": info.get("currency") or currency,
                "name": info.get("shortName") or info.get("longName") or symbol}
     cov: dict = {}
+    m["_source"] = dict(sec_data["metadata"]) if sec_data else {"source": "Yahoo", "fallback_note": source_error}
+
+    def current(stmt, *keys):
+        if sec_data:
+            # Do not silently substitute an older year's snapshot when the most
+            # recent annual report omits a field.
+            return _get(stmt.iloc[:, :1], *keys)
+        return _get(stmt, *keys)
+
+    def series(stmt, *keys):
+        if sec_data:
+            for key in keys:
+                if key in stmt.index:
+                    row = stmt.loc[key]
+                    valid = np.flatnonzero(row.notna())
+                    # Trim only the unavailable distant past, never holes or a
+                    # missing latest year. Recent missing years cannot pass.
+                    return row.iloc[:valid[-1] + 1] if len(valid) else row.iloc[:0]
+            return pd.Series(dtype=float)
+        return _series_all(stmt, *keys)
 
     # ---------- 价格历史 (本地缓存优先): 年末收盘 / 5年分位 ----------
     price, px_df = None, pd.DataFrame()
     try:
         px = fetch_quote(symbol, "1d", count=count)
+        if sec_data and (px.get("stale") or px.get("refresh_failed")):
+            raise ValueError("行情刷新失败，不用于当前年报估值")
         px_df = pd.DataFrame([r[1:] for r in px["rows"]],
                              columns=["open", "high", "low", "close", "volume"],
                              index=pd.to_datetime([r[0] for r in px["rows"]], format="mixed"))
         if len(px_df):
             price = float(px_df["close"].iloc[-1])
+            m["_source"]["price_date"] = str(px_df.index[-1].date())
             m["price_pct_5y"] = float((px_df["close"] < price).mean() * 100.0)
     except Exception:
         m["price_pct_5y"] = np.nan
 
     # ---------- 报表序列 ----------
-    ni_all = _series_all(inc, *K_NET_INCOME)
-    rev_all = _series_all(inc, *K_REVENUE)
-    eps_all = _series_all(inc, *K_EPS)
-    eq_all = _series_all(bs, *K_EQUITY)
-    ni, _ = _get(inc, *K_NET_INCOME)
-    rev, _ = _get(inc, *K_REVENUE)
-    eps, _ = _get(inc, *K_EPS)
-    equity, _ = _get(bs, *K_EQUITY)
-    ocf, _ = _get(cf, *K_OCF)
-    capex, _ = _get(cf, *K_CAPEX)
-    ca, _ = _get(bs, *K_CA)
-    cl, _ = _get(bs, *K_CL)
-    ltd, _ = _get(bs, *K_LTD)
-    goodwill, _ = _get(bs, *K_GOODWILL)
-    assets, _ = _get(bs, *K_ASSETS)
-    liab, _ = _get(bs, *K_LIAB)
-    shares, _ = _get(bs, *K_SHARES)
+    ni_all = series(inc, *K_NET_INCOME)
+    rev_all = series(inc, *K_REVENUE)
+    eps_all = series(inc, *K_EPS)
+    eq_all = series(bs, *K_EQUITY)
+    ni, _ = current(inc, *K_NET_INCOME)
+    rev, _ = current(inc, *K_REVENUE)
+    eps, _ = current(inc, *K_EPS)
+    equity, _ = current(bs, *K_EQUITY)
+    ocf, _ = current(cf, *K_OCF)
+    capex, _ = current(cf, *K_CAPEX)
+    ca, _ = current(bs, *K_CA)
+    cl, _ = current(bs, *K_CL)
+    ltd, _ = current(bs, *K_LTD)
+    goodwill, _ = current(bs, *K_GOODWILL)
+    assets, _ = current(bs, *K_ASSETS)
+    liab, _ = current(bs, *K_LIAB)
+    shares, _ = current(bs, *K_SHARES)
 
     # ---------- 快照字段 (info 优先) ----------
     m["market_cap"] = info.get("marketCap")
@@ -206,27 +239,30 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     def yearly_ratio(num_all, den_all, years):
         vals = []
         for col in num_all.index:
-            if col in den_all.index:
-                nv, dv = num_all[col], den_all[col]
-                if nv and dv:
-                    vals.append((col.year, float(_div(nv, dv))))
+            vals.append((col.year, float(_div(num_all[col], den_all.get(col, np.nan)))))
         vals.sort(reverse=True)
+        if sec_data and vals:
+            by_year = dict(vals)
+            window = list(range(vals[0][0], max(vals[-1][0] - 1, vals[0][0] - years), -1))
+            return window, [by_year.get(y, np.nan) for y in window]
         return [y for y, _ in vals[:years]], [r for _, r in vals[:years]]
 
     _, roe_list = yearly_ratio(ni_all, eq_all, 5)
     m["roe_yearly"], cov["roe_yearly"] = roe_list, len(roe_list)
     _, nm_list = yearly_ratio(ni_all, rev_all, 3)
     m["net_margin_yearly"], cov["net_margin_yearly"] = nm_list, len(nm_list)
-    gp_all = _series_all(inc, "GrossProfit", "Gross Profit")
+    gp_all = series(inc, "GrossProfit", "Gross Profit")
     gm_list = _gross_margin_history(rev_all, gp_all, 3)
     m["gross_margin_yearly"], cov["gross_margin_yearly"] = gm_list, len(gm_list)
-    div_paid = _series_all(cf, *K_DIVPAID)
+    div_paid = series(cf, *K_DIVPAID)
     _, pr_list = yearly_ratio(div_paid.abs(), ni_all, 5)
     m["payout_ratio_yearly"], cov["payout_ratio_yearly"] = pr_list, len(pr_list)
 
     # 股息率逐年: 分红历史按自然年求和 / 该年年末收盘价
     try:
-        div_hist = t.dividends
+        div_hist = t.dividends if t is not None else None
+        if div_hist is not None and div_hist.empty:
+            div_hist = None  # an empty Yahoo response does not prove zero dividends
         dy_list = _completed_dividend_yields(div_hist, px_df)
         m["div_yield_yearly"], cov["div_yield_yearly"] = dy_list, len(dy_list)
     except Exception:
@@ -256,7 +292,7 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     if m["total_debt"] is None:
         m["total_debt"] = ltd if np.isfinite(ltd) else None
     if m["total_cash"] is None:
-        cash_eq, _ = _get(bs, "CashAndCashEquivalents", "Cash And Cash Equivalents")
+        cash_eq, _ = current(bs, "CashAndCashEquivalents", "Cash And Cash Equivalents")
         m["total_cash"] = cash_eq if np.isfinite(cash_eq) else None
 
     # ---------- 派生字段 ----------
@@ -276,7 +312,7 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     if len(eps_all) >= 2:
         cols = list(eps_all.index)
         m["eps_growth"] = _cagr(eps_all[cols[1]], eps_all[cols[0]], 1) \
-            if eps_all[cols[1]] else np.nan
+            if eps_all[cols[1]] and cols[0].year - cols[1].year == 1 else np.nan
         span = cols[0].year - cols[-1].year
         m["eps_cagr_10y"] = _cagr(eps_all[cols[-1]], eps_all[cols[0]], span) \
             if span and eps_all[cols[-1]] else np.nan
@@ -308,14 +344,14 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     m["static_div_yield"] = dy_list[0] if dy_list else np.nan
     # 营业总收入 CAGR(按可得年限, 通常~3年)
     if len(rev_all) >= 2:
-        rcols = list(rev_all.index)
+        rcols = list(rev_all.index)[:4]
         span_r = rcols[0].year - rcols[-1].year
         m["rev_cagr_3y"] = _cagr(rev_all[rcols[-1]], rev_all[rcols[0]], span_r) \
             if span_r and rev_all[rcols[-1]] else np.nan
     else:
         m["rev_cagr_3y"] = np.nan
     # 销售增速 - 存货增速 (存货来自资产负债表 Inventory)
-    inv_all = _series_all(bs, "Inventory")
+    inv_all = series(bs, "Inventory")
     m["sales_minus_inventory_growth"] = _sales_inventory_growth_spread(
         rev_all, inv_all)
     # 净利润增长率 (年报)
@@ -334,6 +370,14 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     dy_pct = (dy_list[0] * 100) if dy_list else np.nan
     eg_pct = m["eps_growth"] * 100 if m["eps_growth"] else np.nan
     m["trr"] = _div(eg_pct + dy_pct, m["trailing_pe"]) if m["trailing_pe"] else np.nan
+
+    if sec_data:
+        dps = sec_data["dividends_per_share"]
+        m["static_div_yield"] = _div(dps.iloc[0], price) if len(dps) else np.nan
+        m["trr"] = _div(eg_pct + m["static_div_yield"] * 100, m["trailing_pe"])
+        for key in ("pe_avg_3y", "pe_pct_5y", "double_play_multiplier"):
+            m[key] = np.nan
+        cov["eps_cagr_10y"] = f"{eps_all.index[0].year - eps_all.index[-1].year}年（同份年报可比 EPS）" if len(eps_all) >= 2 else "不足"
 
     m["_coverage"] = cov
     return m

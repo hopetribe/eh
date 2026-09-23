@@ -13,3 +13,4 @@ data/*.csv.meta.json
 data/radar_email_settings.json
 data/radar_settings.json
 data/radar_universe_*.json
+data/fundamentals_sec/

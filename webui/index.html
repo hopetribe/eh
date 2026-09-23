@@ -324,7 +324,7 @@
       <h2 id="scrDialogTitle">基本面选股 <span class="muted">格雷厄姆 / 施洛斯 / 巴菲特 / 聂夫 / 林奇 / 费雪 / 戴维斯</span></h2>
       <button class="btn" id="scrClose">关闭</button>
     </div>
-    <div class="muted">四套大师策略 + 四套扩展策略 · 财报数据来自 Yahoo · 全部条件需满足 · 市值≥50亿元(增长类100亿)</div>
+    <div class="muted">四套大师策略 + 四套扩展策略 · Yahoo 财报，美股不可用时回退 SEC 年报 · 全部条件需满足 · 市值≥50亿元(增长类100亿)</div>
     <div class="scr-row">
       <select id="scrStrategy" aria-label="选股策略"></select>
       <select id="scrMarket" class="num" aria-label="选股市场" style="width:110px">
@@ -340,7 +340,8 @@
     <div id="scrResult"></div>
     <div class="sec-h">说明</div>
     <div class="muted">条件均需满足才算通过; "逐年"类条件按可得年份评估并标注覆盖;
-      财报源通常仅提供最近 4~5 个年度, "近7年/10年"类条件会标记数据不足;
+      SEC 年报估值不等于 TTM，市值按年报股本估算；同份年报可比 EPS 年限不足时明确标注，缺失条件不放行。
+      无法核验复权一致性的历史股息率/PE 保持缺失；港股及 A 股 Yahoo 限流时会显示获取失败。
       市值按 USD≈7.2 / HKD≈0.92 折算人民币。</div>
   </div>
 </div>
@@ -2027,6 +2028,11 @@ function renderScreen(d) {
       `<b>${esc(r.symbol)}</b> ${esc(r.name) || ""} <span class="${r.passed ? "pass" : "fail"}">` +
       `${r.passed ? "通过" : (r.n_ok ?? 0) + "/" + (r.n_total ?? 0)}</span>` +
       `${r.note ? ' <span class="muted">' + esc(r.note) + "</span>" : ""}</summary>` +
+      (r.data_source ? `<div class="muted">来源：${esc(r.data_source.source || "--")}` +
+        `${r.data_source.annual_period ? " · 年报截至 " + esc(r.data_source.annual_period) : ""}` +
+        `${r.data_source.price_date ? " · 行情截至 " + esc(r.data_source.price_date) : ""}` +
+        `${r.data_source.valuation_basis ? " · " + esc(r.data_source.valuation_basis) : ""}` +
+        `${r.data_source.fallback_note ? " · " + esc(r.data_source.fallback_note) : ""}</div>` : "") +
       '<table class="cond-tbl"><tr><th>条件</th><th>当前值</th><th>阈值</th><th>判定</th><th>备注</th></tr>';
     for (const c of r.conditions) {
       html += `<tr><td>${esc(c.text)}</td><td>${c.value == null ? "--" : esc(c.value)}</td>` +
