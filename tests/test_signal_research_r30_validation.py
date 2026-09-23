@@ -36,6 +36,7 @@ def test_r30_validator_reuses_frozen_exit_gates_and_binds_candidate_marker(monke
     assert captured["validator_source"] == "gcn/backtest/signal_research_r30_validation.py"
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r30-20260908/validation")
 def test_r30_fixed_validation_runs_only_the_frozen_candidate_and_records_audit(tmp_path):
     from gcn.backtest.signal_research_r30 import CHALLENGERS
     from gcn.backtest.signal_research_r30_validation import run_validation
@@ -54,6 +55,7 @@ def test_r30_fixed_validation_runs_only_the_frozen_candidate_and_records_audit(t
     assert "two_leg_enabled" in trades.columns
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r30-20260908/validation")
 def test_r30_formal_validation_reproduces_byte_for_byte_and_rejects_nflx_winner_cut(tmp_path):
     from gcn.backtest.signal_research_r30 import CHALLENGERS
     from gcn.backtest.signal_research_r30_validation import run_validation

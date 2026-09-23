@@ -202,6 +202,7 @@ def test_r25_fixed_episode_strata_keep_overlap_zero_symbols_censoring_and_aligne
     assert empty.episodes.eq(0).all() and empty.next_completed.eq(0).all()
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r25-20260905/training")
 def test_r25_training_archive_binds_both_original_windows_parent_prices_sources_and_actual_flat_rows(tmp_path, monkeypatch):
     import hashlib
     import json
@@ -252,6 +253,7 @@ def test_r25_training_archive_binds_both_original_windows_parent_prices_sources_
         run_diagnostic(snapshot, prior, tmp_path, window="training")
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r25-20260905/training")
 def test_r25_archive_rejects_changed_either_window_parent_sources_and_midrun_changes_before_output(tmp_path, monkeypatch):
     import json
     import shutil
@@ -354,6 +356,7 @@ def test_r25_real_price_prefixes_preserve_observations_and_only_then_known_reent
     assert checked >= 40
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r25-20260905/training")
 def test_r25_known_validation_keeps_all_four_exits_censored_nvda_and_actual_tsla_chain(tmp_path):
     import hashlib
     import json

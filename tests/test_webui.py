@@ -269,7 +269,9 @@ def test_webui_radar_email_settings_are_accessible_and_escaped():
     assert 'id="radEmailInput" type="email"' in INDEX
     assert 'for="radEmailInput"' in INDEX
     assert 'id="radDelivery" role="status"' in INDEX
-    assert 'fetch("/api/radar/email"' in script
+    assert 'adminFetch("/api/radar/email"' in script
+    assert 'id="radAdminToken" type="password"' in INDEX
+    assert 'headers.set("Authorization", "Bearer " + token)' in script
     assert "validateRadarEmailSettings" in script
     assert '${esc(email)}' in script
     assert 'input.reportValidity()' in script

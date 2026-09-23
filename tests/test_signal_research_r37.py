@@ -55,6 +55,7 @@ def test_predictions_purge_future_labels_and_leave_out_the_symbol():
     assert not scored.duplicated(["scheme", "symbol", "signal", "date"]).any()
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r37-20260912/results")
 def test_archive_binds_parent_and_refuses_reuse(tmp_path):
     from gcn.backtest.signal_research_r37 import run_research
     parent = ROOT / "reports/gcn-historical-r36-20260912/results"

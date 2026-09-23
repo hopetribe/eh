@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -198,6 +199,7 @@ def test_r30_strict_boundaries_first_day_only_old_exit_priority_terminal_and_mar
             _one_strategy(bad, *args, entry_two_leg_rejection_col="TWO_LEG")
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r30-20260908/training")
 def test_r30_formal_training_reproduces_byte_for_byte_and_keeps_all_original_entries(tmp_path):
     from gcn.backtest.signal_research_r30 import run_training, CHALLENGERS
 

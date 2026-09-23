@@ -85,8 +85,9 @@ def _eval_condition(cond: dict, m: dict) -> dict:
 def evaluate_symbol(symbol: str, strategy_id: str, count: int = 1300) -> dict:
     """对单个标的执行策略评估 (含全局市值过滤)。"""
     strat = get_strategy(strategy_id)
-    ysym = to_yahoo_symbol(symbol)
+    ysym = symbol
     try:
+        ysym = to_yahoo_symbol(symbol)
         m = fundamentals.compute_metrics(ysym, count=count)
         fx = FX_TO_CNY.get(str(m.get("currency_code") or m.get("currency") or "USD").upper(), 1.0)
         mc = _finite_number(m.get("market_cap"))
@@ -101,6 +102,13 @@ def evaluate_symbol(symbol: str, strategy_id: str, count: int = 1300) -> dict:
         selected = [c for c in strat["conditions"] if c.get("field") != "market_cap_cny"]
         conds = [_eval_condition(c, m) for c in selected]
         source = m.get("_source", {})
+        for definition, result in zip(selected, conds):
+            if definition["field"] == "eps_cagr_10y":
+                coverage = m.get("_coverage", {}).get("eps_cagr_10y")
+                years = m.get("_coverage", {}).get("eps_cagr_10y_years")
+                if (coverage and source.get("source") != "SEC EDGAR"
+                        and (years is None or years < 10)):
+                    result["note"] = "; ".join(filter(None, [result["note"], "实际覆盖：" + str(coverage)]))
         if source.get("source") == "SEC EDGAR":
             for definition, result in zip(selected, conds):
                 result["text"] = result["text"].replace("TTM", "年报估算")

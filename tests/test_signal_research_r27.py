@@ -192,6 +192,7 @@ def test_r27_summary_keeps_eligible_cohort_missing_recovery_clock_and_complete_d
     assert len(empty) == 198 and empty.events.eq(0).all() and empty.win_rate_pct.isna().all()
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r27-20260905/training")
 def test_r27_training_archive_binds_frozen_inputs_and_reconciles_all_native_expiries_without_simulation(tmp_path, monkeypatch):
     import hashlib
     import json
@@ -239,6 +240,7 @@ def test_r27_training_archive_binds_frozen_inputs_and_reconciles_all_native_expi
                 assert first.date == row.first_recovery_date and first.both and first.bars_after_expiry > 0
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r27-20260905/training")
 def test_r27_rejects_changed_inputs_mechanism_source_midrun_and_nonempty_outputs(tmp_path, monkeypatch):
     import shutil
     import gcn.backtest.signal_research_r27 as research
@@ -341,6 +343,7 @@ def test_r27_real_fixed_prefixes_preserve_available_history_observations_and_mat
 
 
 @pytest.mark.parametrize('window,order_count', [('training', 50), ('validation', 17), ('recent', 17), ('full', 82)])
+@pytest.mark.frozen_research("reports/gcn-historical-r27-20260905/training")
 def test_r27_fixed_window_archive_preserves_original_cohorts_and_reproduces_formal_outputs(tmp_path, window, order_count):
     import json
     from gcn.backtest.historical_research import CORE, load_snapshot

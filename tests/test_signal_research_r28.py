@@ -207,6 +207,7 @@ def test_r28_summary_separates_original_trade_outcomes_from_event_clocks_and_kee
     assert empty.trades.eq(0).all() and empty.mean_original_return_pct.isna().all()
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r28-20260906/training")
 def test_r28_training_archive_binds_original_orders_and_reconciles_all_actual_b_without_new_simulation(tmp_path, monkeypatch):
     import hashlib
     import json
@@ -258,6 +259,7 @@ def test_r28_training_archive_binds_original_orders_and_reconciles_all_actual_b_
             assert first.date == row.first_recovery_date and first.date > row.first_failure_date and first.both_above
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r28-20260906/training")
 def test_r28_rejects_changed_inputs_sources_mechanism_environment_midrun_and_nonempty_output(tmp_path, monkeypatch):
     import shutil
     import gcn.backtest.signal_research_r28 as research
@@ -373,6 +375,7 @@ def test_r28_nonfinite_close_cannot_create_a_recovery_after_known_failure():
 
 
 @pytest.mark.parametrize('window,order_count', [('training', 50), ('validation', 17), ('recent', 17), ('full', 82)])
+@pytest.mark.frozen_research("reports/gcn-historical-r28-20260906/training")
 def test_r28_fixed_archives_keep_original_b_outcomes_and_reproduce_all_frozen_outputs(tmp_path, window, order_count):
     import json
     from gcn.backtest.signal_research_r28 import run_diagnostic

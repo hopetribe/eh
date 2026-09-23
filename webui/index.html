@@ -374,6 +374,12 @@
       <div id="radSignals" class="rad-row"></div>
       <div class="muted" id="radConfigNote">勾选信号后点击“保存配置并扫描”；每日扫描也使用该配置。</div>
     </fieldset>
+    <form id="radAdminForm" class="rad-row">
+      <label for="radAdminToken">管理员令牌</label>
+      <input id="radAdminToken" type="password" autocomplete="off" placeholder="远程管理需要令牌">
+      <button class="btn" type="submit">解锁管理</button>
+      <span class="muted">仅在当前页面使用；浏览行情无需令牌。</span>
+    </form>
     <section class="rad-email-card" aria-labelledby="radEmailTitle">
       <div class="rad-email-head">
         <div>
@@ -2117,6 +2123,17 @@ async function pollRadar() {
   }
 }
 
+function adminFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  const token = $("#radAdminToken").value.trim();
+  if (token) headers.set("Authorization", "Bearer " + token);
+  return fetch(url, { ...options, headers });
+}
+$("#radAdminForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadRadarEmailSettings();
+});
+
 function renderRadarEmailSettings() {
   const state = $("#radEmailState");
   const list = $("#radRecipients");
@@ -2160,9 +2177,16 @@ function validateRadarEmailSettings(data) {
 async function loadRadarEmailSettings() {
   const request = beginRequest("radarEmail");
   try {
-    const response = await fetch("/api/radar/email", { signal: request.signal });
+    const response = await adminFetch("/api/radar/email", { signal: request.signal });
     const data = await response.json();
     if (!isCurrentRequest(request)) return;
+    if (response.status === 401) {
+      radarEmailSettings = null;
+      $("#radRecipients").replaceChildren();
+      $("#radEmailState").textContent = "待解锁";
+      $("#radDelivery").textContent = "输入管理员令牌后可查看和修改邮件设置。";
+      return;
+    }
     if (!response.ok || data.error) throw new Error(data.error || "邮件设置加载失败");
     radarEmailSettings = validateRadarEmailSettings(data);
     renderRadarEmailSettings();
@@ -2183,7 +2207,7 @@ async function updateRadarRecipient(action, email) {
   addButton.disabled = true;
   $("#radDelivery").textContent = action === "add" ? "正在添加收件人…" : "正在移除收件人…";
   try {
-    const response = await fetch("/api/radar/email", {
+    const response = await adminFetch("/api/radar/email", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, email }), signal: request.signal,
     });
@@ -2210,7 +2234,7 @@ async function startRadarScan(market) {
   $("#radStatus").textContent = "正在提交扫描…";
   const request = beginRequest("radarScan");
   try {
-    const response = await fetch("/api/radar/scan", {
+    const response = await adminFetch("/api/radar/scan", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ market, ...radarConfig }),
       signal: request.signal,

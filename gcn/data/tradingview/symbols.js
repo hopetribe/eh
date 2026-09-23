@@ -13,6 +13,13 @@ function bareSymbol(value) {
 }
 
 function matchesSymbol(candidate, value) {
+  const normalized = String(value).trim().toUpperCase();
+  const exchange = String(candidate.id || '').split(':')[0].toUpperCase();
+  const hk = normalized.startsWith('HK.') || normalized.endsWith('.HK') || /^\d{5}$/.test(normalized);
+  const sh = /^(SH|SS)\./.test(normalized) || normalized.endsWith('.SS') || /^[569]\d{5}$/.test(normalized);
+  const sz = normalized.startsWith('SZ.') || normalized.endsWith('.SZ') || (!sh && /^\d{6}$/.test(normalized));
+  const allowed = hk ? ['HKEX'] : sh ? ['SSE'] : sz ? ['SZSE'] : ['NASDAQ', 'NYSE', 'AMEX', 'ARCA', 'BATS', 'OTC'];
+  if (!allowed.includes(exchange)) return false;
   const expected = bareSymbol(value);
   const actual = String(candidate.symbol || "").toUpperCase();
   return actual === expected || (expected.match(/^\d+$/)

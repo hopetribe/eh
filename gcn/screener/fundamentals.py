@@ -39,10 +39,10 @@ def _div(a, b):
 
 
 def _get(stmt: pd.DataFrame, *keys):
-    """取最近一个可用年份的值, 返回 (值, 完整序列)。"""
+    """取最新报告期，保留缺失年度，禁止用旧报告补位。"""
     for k in keys:
         if k in stmt.index:
-            s = stmt.loc[k].dropna()
+            s = stmt.loc[k].sort_index(ascending=False)
             if len(s):
                 return float(s.iloc[0]), s
     return np.nan, pd.Series(dtype=float)
@@ -167,6 +167,12 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
                "name": info.get("shortName") or info.get("longName") or symbol}
     cov: dict = {}
     m["_source"] = dict(sec_data["metadata"]) if sec_data else {"source": "Yahoo", "fallback_note": source_error}
+    quote_currency = str(m["currency"]).upper()
+    financial_currency = str(info.get("financialCurrency") or quote_currency).upper()
+    same_currency = quote_currency == financial_currency
+    m["_source"]["financial_currency"] = financial_currency
+    if not same_currency:
+        m["_source"]["currency_note"] = "财报与交易币种不同，跨币种派生指标保持缺失"
 
     def current(stmt, *keys):
         if sec_data:
@@ -176,22 +182,13 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
         return _get(stmt, *keys)
 
     def series(stmt, *keys):
-        if sec_data:
-            for key in keys:
-                if key in stmt.index:
-                    row = stmt.loc[key]
-                    valid = np.flatnonzero(row.notna())
-                    # Trim only the unavailable distant past, never holes or a
-                    # missing latest year. Recent missing years cannot pass.
-                    return row.iloc[:valid[-1] + 1] if len(valid) else row.iloc[:0]
-            return pd.Series(dtype=float)
         return _series_all(stmt, *keys)
 
     # ---------- 价格历史 (本地缓存优先): 年末收盘 / 5年分位 ----------
     price, px_df = None, pd.DataFrame()
     try:
         px = fetch_quote(symbol, "1d", count=count)
-        if sec_data and (px.get("stale") or px.get("refresh_failed")):
+        if px.get("stale") or px.get("refresh_failed"):
             raise ValueError("行情刷新失败，不用于当前年报估值")
         px_df = pd.DataFrame([r[1:] for r in px["rows"]],
                              columns=["open", "high", "low", "close", "volume"],
@@ -241,7 +238,7 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
         for col in num_all.index:
             vals.append((col.year, float(_div(num_all[col], den_all.get(col, np.nan)))))
         vals.sort(reverse=True)
-        if sec_data and vals:
+        if vals:
             by_year = dict(vals)
             window = list(range(vals[0][0], max(vals[-1][0] - 1, vals[0][0] - years), -1))
             return window, [by_year.get(y, np.nan) for y in window]
@@ -273,9 +270,9 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     if price:
         if m["market_cap"] is None and shares:
             m["market_cap"] = shares * price
-        if m["trailing_pe"] is None and eps:
+        if same_currency and m["trailing_pe"] is None and eps:
             m["trailing_pe"] = _div(price, eps)
-        if m["pb_mrq"] is None and shares and equity:
+        if same_currency and m["pb_mrq"] is None and shares and equity:
             m["pb_mrq"] = _div(price, _div(equity, shares))
     if m["roe"] is None and roe_list:
         m["roe"] = roe_list[0]
@@ -290,7 +287,11 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     if m["fcf"] is None and np.isfinite(ocf) and np.isfinite(capex):
         m["fcf"] = ocf + capex  # capex 通常为负数
     if m["total_debt"] is None:
-        m["total_debt"] = ltd if np.isfinite(ltd) else None
+        total_debt, _ = current(bs, "TotalDebt", "Total Debt")
+        if not np.isfinite(total_debt):
+            short_debt, _ = current(bs, "CurrentDebt", "Current Debt", "CurrentDebtAndCapitalLeaseObligation")
+            total_debt = ltd + short_debt if np.isfinite(ltd) and np.isfinite(short_debt) else np.nan
+        m["total_debt"] = float(total_debt) if np.isfinite(total_debt) else None
     if m["total_cash"] is None:
         cash_eq, _ = current(bs, "CashAndCashEquivalents", "Cash And Cash Equivalents")
         m["total_cash"] = cash_eq if np.isfinite(cash_eq) else None
@@ -306,7 +307,7 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
     m["debt_to_assets"] = _div(liab, assets)
     m["goodwill_to_assets"] = _div(goodwill, assets)
     m["working_capital_to_ltd"] = _div(ca - cl, ltd)
-    m["roic"] = _div(ni * 0.75, (m["total_debt"] or 0) + equity)
+    m["roic"] = _div(ni * 0.75, m["total_debt"] + equity) if m["total_debt"] is not None else np.nan
     m["roe_avg_3y"] = float(np.mean(roe_list[:3])) if len(roe_list) >= 3 else np.nan
 
     if len(eps_all) >= 2:
@@ -317,9 +318,11 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
         m["eps_cagr_10y"] = _cagr(eps_all[cols[-1]], eps_all[cols[0]], span) \
             if span and eps_all[cols[-1]] else np.nan
         cov["eps_cagr_10y"] = f"{span}年(数据上限)"
+        cov["eps_cagr_10y_years"] = span
     else:
         m["eps_growth"], m["eps_cagr_10y"] = np.nan, np.nan
         cov["eps_cagr_10y"] = "不足"
+        cov["eps_cagr_10y_years"] = 0
     if len(rev_all) >= 2:
         cols = list(rev_all.index)
         m["revenue_growth"] = _div(rev_all[cols[0]], rev_all[cols[1]]) - 1
@@ -379,6 +382,11 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
             m[key] = np.nan
         cov["eps_cagr_10y"] = f"{eps_all.index[0].year - eps_all.index[-1].year}年（同份年报可比 EPS）" if len(eps_all) >= 2 else "不足"
 
+    if not same_currency:
+        # No implicit 1:1 conversion between financial and listing currencies.
+        for key in ("fcf_to_net_income", "net_cash", "net_cash_to_mktcap", "roic",
+                    "graham_pe_pb", "pe_avg_3y", "pe_pct_5y", "double_play_multiplier"):
+            m[key] = np.nan
     m["_coverage"] = cov
     return m
 
@@ -386,5 +394,14 @@ def compute_metrics(symbol: str, count: int = 1300) -> dict:
 def _series_all(stmt: pd.DataFrame, *keys) -> pd.Series:
     for k in keys:
         if k in stmt.index:
-            return stmt.loc[k].dropna()
+            row = stmt.loc[k].sort_index(ascending=False)
+            valid = np.flatnonzero(row.notna())
+            row = row.iloc[:valid[-1] + 1] if len(valid) else row.iloc[:0]
+            if len(row) and isinstance(row.index, pd.DatetimeIndex):
+                years = set(row.index.year)
+                for year in range(row.index[-1].year + 1, row.index[0].year):
+                    if year not in years:
+                        row.loc[row.index[0] - pd.DateOffset(years=row.index[0].year - year)] = np.nan
+                row = row.sort_index(ascending=False)
+            return row
     return pd.Series(dtype=float)

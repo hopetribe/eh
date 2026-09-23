@@ -1589,7 +1589,8 @@ details.collapse[open] .parameter-body {
   margin-top: 8px;
 }
 
-.rad-email-form input {
+.rad-email-form input,
+#radAdminToken {
   flex: 1;
   min-width: 0;
   height: 36px;
@@ -1601,7 +1602,8 @@ details.collapse[open] .parameter-body {
   font: inherit;
 }
 
-.rad-email-form input:focus {
+.rad-email-form input:focus,
+#radAdminToken:focus {
   outline: none;
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px rgba(79, 141, 247, .12);

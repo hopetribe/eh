@@ -6,6 +6,8 @@ import argparse
 import ipaddress
 import json
 import math
+import os
+import hmac
 import socket
 import threading
 import urllib.parse
@@ -321,6 +323,15 @@ class UiHandler(BaseHTTPRequestHandler):
             raise RequestError(413, f"请求体过大 ({length} 字节, 上限 {MAX_BODY})")
         return _parse_json(self.rfile.read(length))
 
+    def _admin_guard(self):
+        bound = str(getattr(self.server, "bound_host", self.server.server_address[0]))
+        if _is_loopback(bound):
+            return
+        token = os.environ.get("GCN_ADMIN_TOKEN", "")
+        authorization = self.headers.get("Authorization", "")
+        if not token or not hmac.compare_digest(authorization.encode(), ("Bearer " + token).encode()):
+            raise RequestError(401, "此操作需要管理员令牌")
+
     def _send_exception(self, exc: Exception):
         if isinstance(exc, RequestError):
             self._send_json({"error": str(exc)}, exc.status)
@@ -364,6 +375,7 @@ class UiHandler(BaseHTTPRequestHandler):
                         config["signals"] = options["signals"][0].split(",")
                 self._send_json(radar_engine.SERVICE.snapshot(_parse_markets(query), config))
             elif path == "/api/radar/email":
+                self._admin_guard()
                 self._send_json(radar_emailer.get_email_settings())
             elif path == "/favicon.ico":
                 self._send(204, b"", "image/x-icon")
@@ -384,6 +396,8 @@ class UiHandler(BaseHTTPRequestHandler):
             return
         try:
             self._request_guard()
+            if path in ("/api/radar/email", "/api/radar/scan"):
+                self._admin_guard()
             req = self._read_json_request()
 
             if path == "/api/fetch":

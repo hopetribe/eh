@@ -2,6 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +80,7 @@ def test_r31_training_wrapper_binds_single_candidate(tmp_path):
     assert control["buy_covered"] == 11
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r31-20260908/training")
 def test_r31_formal_training_archive_reproduces_byte_for_byte(tmp_path):
     import gcn.backtest.signal_research_r31 as research
 

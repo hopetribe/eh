@@ -12,8 +12,16 @@ test("normalizes KK2 market aliases for TradingView lookup", () => {
 });
 
 test("matches zero-padded exchange symbols", () => {
-  assert.equal(matchesSymbol({ symbol: "700" }, "HK.00700"), true);
+  assert.equal(matchesSymbol({ id: "HKEX:700", symbol: "700" }, "HK.00700"), true);
   assert.equal(matchesSymbol({ symbol: "9988" }, "HK.00700"), false);
+});
+
+test("never resolves the same ticker on a different exchange", () => {
+  assert.equal(matchesSymbol({id: "MIL:AAPL", symbol: "AAPL"}, "US.AAPL"), false);
+  assert.equal(matchesSymbol({id: "HKEX:1", symbol: "1"}, "000001.SZ"), false);
+  assert.equal(matchesSymbol({id: "SSE:000700", symbol: "000700"}, "00700"), false);
+  assert.equal(matchesSymbol({id: "NASDAQ:AAPL", symbol: "AAPL"}, "US.AAPL"), true);
+  assert.equal(matchesSymbol({id: "SZSE:000001", symbol: "000001"}, "000001.SZ"), true);
 });
 
 test("radar Hong Kong codes search without padding while A-share codes retain it", () => {

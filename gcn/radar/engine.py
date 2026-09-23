@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+import copy
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -191,6 +192,16 @@ class RadarService:
         stale = (cache is None
                  or cache.get("universe_schema") != UNIVERSE_CACHE_SCHEMA
                  or time.time() - cache.get("generated_at", 0) > CACHE_TTL)
+        if cache:
+            cache = copy.deepcopy(cache)
+            today = pd.Timestamp.now().normalize().date()
+            for item in cache.get("results", []):
+                for signal in item.get("signals", []):
+                    try:
+                        age = int(np.busday_count(pd.Timestamp(signal["date"]).date(), today))
+                        signal["days_ago"] = max(int(signal.get("days_ago", 0)), age, 0)
+                    except (KeyError, TypeError, ValueError):
+                        signal["days_ago"] = 10**9
         return {"cache": cache, "stale": stale}
 
     def snapshot(self, markets: list[str] | None = None, config=None) -> dict:

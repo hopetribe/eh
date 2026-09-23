@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -294,6 +295,7 @@ def test_r32_strict_boundaries_nonfinite_values_old_exit_priority_and_marker_con
             _one_strategy(bad, *args, entry_macd_loss_col="MACD_LOSS")
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r32-20260908/training")
 def test_r32_formal_training_reproduces_byte_for_byte_and_preserves_entries(tmp_path):
     from gcn.backtest.signal_research_r32 import CHALLENGERS, run_training
 

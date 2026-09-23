@@ -625,7 +625,7 @@ def _perf(equity: np.ndarray, trades: list,
         "trades": len(trades),
         "win": round(float((rets > 0).mean()) * 100, 1) if len(rets) else None,
         "avg": round(float(rets.mean()) * 100, 2) if len(rets) else None,
-        "pf": round(float(wins.sum() / abs(losses.sum())), 2) if len(wins) and len(losses) else None,
+        "pf": round(float(wins.sum() / abs(losses.sum())), 2) if len(wins) and losses.sum() < 0 else None,
         "avg_hold": round(float(np.mean([t["hold"] for t in trades])), 1) if trades else None,
     }
 

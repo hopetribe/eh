@@ -92,14 +92,8 @@ def _cache_key(symbol: str) -> str:
     """Collapse Futu/Yahoo/bare aliases to one filesystem-safe cache key."""
     value = _normalize_symbol(symbol)
     futu = to_futu_symbol(value)
-    market, code = futu.split(".", 1)
-    if market in ("HK", "SH", "SZ", "US"):
-        value = code
-    else:  # defensive: to_futu_symbol currently always returns a known market
-        value = futu
-    if "." in value or "_" in value:
-        return "x_" + value.encode("ascii").hex()
-    return value
+    # Include the market even for numeric symbols; SH.000001 != SZ.000001.
+    return "k2_" + futu.encode("ascii").hex()
 
 
 def _cache_path(symbol: str, interval: str):
@@ -161,7 +155,7 @@ def _load_cache(symbol: str, interval: str) -> pd.DataFrame | None:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if not meta.get("sha256") or meta.get("sha256") == digest:
-                df.attrs.update({k: meta[k] for k in ("source", "adjustment") if k in meta})
+                df.attrs.update({k: meta[k] for k in ("source", "adjustment", "observed_at") if k in meta})
         return _sanitize_ohlcv(df)
     except Exception:  # noqa: BLE001 - 缓存损坏时忽略, 重新抓取
         return None
@@ -200,7 +194,7 @@ def _save_cache(symbol: str, interval: str, df: pd.DataFrame):
     path = _cache_path(symbol, interval)
     csv_text = out.to_csv(index=False)
     _atomic_write_text(path, csv_text)
-    meta = {k: clean.attrs[k] for k in ("source", "adjustment") if k in clean.attrs}
+    meta = {k: clean.attrs[k] for k in ("source", "adjustment", "observed_at") if k in clean.attrs}
     meta_path = path.with_suffix(path.suffix + ".meta.json")
     if meta:
         meta["sha256"] = hashlib.sha256(csv_text.encode("utf-8")).hexdigest()
@@ -263,6 +257,14 @@ def _cache_is_fresh(cached: pd.DataFrame, interval: str, path,
     last = pd.Timestamp(last).tz_localize(None).normalize() \
         if pd.Timestamp(last).tzinfo is not None else pd.Timestamp(last).normalize()
     expected = _last_completed_session(symbol, now=now)
+    # The bar's label does not prove we fetched its final closing value.
+    # Legacy caches without observation provenance must be refreshed once.
+    try:
+        observed = pd.Timestamp(float(cached.attrs["observed_at"]), unit="s", tz="UTC")
+        if _last_completed_session(symbol, now=observed) < expected:
+            return False
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
     if interval == "1wk":
         return last.to_period("W-SUN") >= expected.to_period("W-SUN")
     return last >= expected
@@ -388,8 +390,19 @@ def _merge_market_data(cached: pd.DataFrame | None, fresh: pd.DataFrame) -> pd.D
           or not fresh.attrs.get("adjustment")):
         out = fresh.copy()
     else:
-        out = pd.concat([cached, fresh])
-        out = out[~out.index.duplicated(keep="last")].sort_index()
+        overlap = cached.index.intersection(fresh.index)
+        # Exclude the possibly unfinished last cached bar. A compatible label
+        # alone cannot establish that split/dividend adjustment factors agree.
+        overlap = overlap[overlap < cached.index.max()]
+        columns = ["open", "high", "low", "close"]
+        compatible = len(overlap) and np.allclose(
+            cached.loc[overlap, columns], fresh.loc[overlap, columns],
+            rtol=1e-5, atol=1e-8)
+        if compatible:
+            out = pd.concat([cached, fresh])
+            out = out[~out.index.duplicated(keep="last")].sort_index()
+        else:
+            out = fresh.copy()
     out.attrs.update(attrs)
     return out
 
@@ -683,12 +696,14 @@ def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT,
                     if source is None:
                         notes.append(f"在线更新失败({exc}), 使用本地缓存")
                     else:
+                        merged.attrs["observed_at"] = time.time()
                         _save_cache(symbol, interval, merged)
                         out_rows = _rows_from_df(merged)
+                        stale = not _cache_is_fresh(merged, interval, cpath, symbol=symbol)
                         return {"rows": out_rows[-count:], "source": source,
                                 "symbol": sym_used, "interval": interval,
-                                "note": "; ".join(notes), "stale": False,
-                                "refresh_failed": False}
+                                "note": "; ".join(notes), "stale": stale,
+                                "refresh_failed": stale}
                     out_rows = _rows_from_df(merged)
                     return {"rows": out_rows[-count:], "source": "cache",
                             "symbol": sym_used, "interval": interval,
@@ -697,11 +712,16 @@ def fetch_quote(symbol: str, interval: str = "1d", count: int = DEFAULT_COUNT,
                 detail = "; ".join(notes + [f"Yahoo({exc})"])
                 raise RuntimeError(f"获取 {symbol} 行情失败: {detail}") from exc
 
+        merged.attrs["observed_at"] = time.time()
+        stale = (not interval.endswith("m")
+                 and not _cache_is_fresh(merged, interval, cpath, symbol=symbol))
+        if stale:
+            notes.append("行情源未覆盖最近已收盘交易日，返回过期数据")
         _save_cache(symbol, interval, merged)
         out_rows = _rows_from_df(merged)
         return {"rows": out_rows[-count:], "source": source,
                 "symbol": sym_used, "interval": interval, "note": "; ".join(notes),
-                "stale": False, "refresh_failed": False}
+                "stale": stale, "refresh_failed": stale}
 
 
 def df_from_rows(rows) -> pd.DataFrame:

@@ -39,6 +39,7 @@ def test_r32_validator_binds_frozen_candidate_marker_and_gates(monkeypatch):
     assert captured["validator_source"] == "gcn/backtest/signal_research_r32_validation.py"
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r32-20260908/validation")
 def test_r32_fixed_validation_runs_frozen_candidate_and_carries_macd_audit(tmp_path):
     from gcn.backtest.signal_research_r32 import CHALLENGERS
     from gcn.backtest.signal_research_r32_validation import run_validation
@@ -79,6 +80,7 @@ def test_r32_validation_rejects_training_macd_loss_configuration_tampering(tmp_p
         )
 
 
+@pytest.mark.frozen_research("reports/gcn-historical-r32-20260908/validation")
 def test_r32_formal_validation_reproduces_byte_for_byte_and_keeps_v5(tmp_path):
     from gcn.backtest.signal_research_r32 import CHALLENGERS
     from gcn.backtest.signal_research_r32_validation import run_validation

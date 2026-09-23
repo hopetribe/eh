@@ -342,6 +342,7 @@ def test_r26_real_fixed_price_prefixes_keep_past_states_and_matured_event_labels
 
 
 @pytest.mark.parametrize('window,count', [('validation', 17), ('recent', 17), ('full', 82)])
+@pytest.mark.frozen_research("reports/gcn-historical-r26-20260905/training")
 def test_r26_other_fixed_original_windows_keep_native_orders_terminal_boundaries_and_zero_stocks(tmp_path, window, count):
     import json
     from gcn.backtest.signal_research_r26 import run_diagnostic
